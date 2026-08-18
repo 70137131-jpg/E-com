@@ -1,26 +1,132 @@
 @import "tailwindcss";
 
+/* ---------------------------------------------------------------------------
+ * Design tokens — PRD §7.1. Every visual decision comes from here.
+ * Dark mode is out of scope; do not add it.
+ * ------------------------------------------------------------------------- */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: 0 0% 100%;
+  --foreground: 20 14% 10%;
+  --muted: 20 6% 96%;
+  --muted-foreground: 20 6% 38%;
+  --border: 20 6% 90%;
+  --primary: 20 14% 10%;
+  --primary-foreground: 0 0% 100%;
+  --accent: 15 70% 44%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 72% 42%;
+  --destructive-foreground: 0 0% 100%;
+  --success: 142 71% 28%;
+  --success-foreground: 0 0% 100%;
+  --radius: 0.5rem;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-border: hsl(var(--border));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-success: hsl(var(--success));
+  --color-success-foreground: hsl(var(--success-foreground));
+
+  --radius-DEFAULT: var(--radius);
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  /* §7.2 typography scale */
+  --text-h1: 1.875rem;      /* 30px */
+  --text-h1--line-height: 1.2;
+  --text-h2: 1.5rem;        /* 24px */
+  --text-h2--line-height: 1.25;
+  --text-h3: 1.125rem;      /* 18px */
+  --text-h3--line-height: 1.4;
+  --text-price: 1.25rem;    /* 20px */
+  --text-price--line-height: 1.3;
+
+  /* §7.3 spacing additions beyond Tailwind's default scale */
+  --spacing-section: 4rem;  /* 64px desktop rhythm */
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  * {
+    border-color: hsl(var(--border));
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-size: 1rem;
+    line-height: 1.6;
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* §7.6 — every interactive element has a visible focus ring. */
+  :focus-visible {
+    outline: 2px solid hsl(var(--accent));
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  /* Prices use tabular figures so columns line up (§7.2). */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  h1, h2, h3, h4 {
+    font-weight: 500;
+    text-wrap: balance;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer utilities {
+  /* Page container — 1280px max, 16px gutters mobile, 32px desktop (§7.3). */
+  .container-page {
+    margin-inline: auto;
+    width: 100%;
+    max-width: 1280px;
+    padding-inline: 1rem;
+  }
+
+  @media (min-width: 1024px) {
+    .container-page {
+      padding-inline: 2rem;
+    }
+  }
+
+  /* Section rhythm — 40px mobile, 64px desktop (§7.3). */
+  .section {
+    padding-block: 2.5rem;
+  }
+
+  @media (min-width: 1024px) {
+    .section {
+      padding-block: 4rem;
+    }
+  }
+
+  /* Minimum 44x44px touch targets (§7.6). */
+  .tap-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* Respect users who ask for less motion; nothing here animates over 200ms. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
