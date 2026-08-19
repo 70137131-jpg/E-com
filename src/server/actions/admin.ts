@@ -1,7 +1,8 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, updateTag } from 'next/cache';
 import { commerce, isOrderStatus } from '@/lib/commerce';
+import { CATALOGUE_TAG } from '@/lib/commerce/local/catalog';
 import {
   setPublishedSchema,
   updateOrderStatusSchema,
@@ -104,6 +105,13 @@ export async function setProductPublished(input: {
  * /products/[slug] page serving an unpublished product.
  */
 function revalidateCatalogue() {
+  // Catalogue reads are cached under this tag; without invalidating it the pages
+  // would re-render and read the same cached rows straight back.
+  //
+  // updateTag, not revalidateTag: this is a read-your-own-writes case. The
+  // operator must see the new price on the next request, and revalidateTag's
+  // recommended profile serves the stale value once before refreshing.
+  updateTag(CATALOGUE_TAG);
   revalidatePath('/(shop)', 'layout');
   revalidatePath('/(shop)/products/[slug]', 'page');
   revalidatePath('/(shop)/collections/[slug]', 'page');

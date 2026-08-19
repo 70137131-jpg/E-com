@@ -162,7 +162,7 @@ export interface CommerceProvider {
   createOrder(input: CreateOrderInput): Promise<Order>;
   getOrder(id: string): Promise<Order | null>;
   getOrderByPaymentIntent(pi: string): Promise<Order | null>;
-  listOrders(opts?: { status?: OrderStatus; limit?: number }): Promise<Order[]>;
+  listOrders(opts?: { status?: OrderStatus; limit?: number; withItems?: boolean }): Promise<Order[]>;
   updateOrderStatus(id: string, status: OrderStatus): Promise<Order>;
 
   // Admin surfaces

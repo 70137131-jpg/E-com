@@ -118,16 +118,160 @@ Resend logs the rendered email instead of sending it. Never commit `.env.local`.
 `next.config.ts` sets a CSP that explicitly allows `js.stripe.com` in `script-src`
 and `frame-src`. Adding any third-party script means editing that list.
 
-## Not built yet
+## Route structure
 
-Roughly PRD days 1–4 are in place. Still missing, and specced in the PRD:
+Storefront routes live under `src/app/(shop)/` and get the header, footer and cart
+drawer from that group's layout. `/admin` sits outside it with its own chrome, so
+the root layout holds only the document, font and toaster. Two consequences:
 
-- `/checkout/success` — `CheckoutForm` already routes there and
-  `OrderConfirmation.tsx` + `lookupOrderByPaymentIntent()` exist unused; the page
-  itself needs writing, with the polling behaviour from §6.6
-- The whole `/admin` surface (§6.9–6.12) — provider methods, zod schemas and
-  `src/lib/signing.ts` are ready; `middleware.ts` and the routes are not
-- `src/server/actions/admin.ts` (§14)
-- Static pages `/about`, `/shipping-returns`, `/contact` (§6.7)
-- `sitemap.ts` and `robots.ts` (§17.2)
-- `README.md` is still the create-next-app default
+- Adding a storefront page means putting it inside `(shop)`, or it renders
+  chrome-less.
+- `revalidatePath` from an admin action must use the **route-group qualified**
+  path, and a dynamic segment needs the pattern form plus an explicit type:
+  `revalidatePath('/(shop)/products/[slug]', 'page')`. A bare
+  `revalidatePath('/', 'layout')` will not reach the prerendered product pages.
+
+The prose pages (`/about`, `/shipping-returns`, `/contact`) sit in a nested
+`(static)` group inside `(shop)`. Its layout is the whole design: single column,
+`max-w-[65ch]`, `.prose-page` (PRD 6.7). A new prose page goes in that group and
+inherits the measure — do not hand-roll widths per page.
+
+## SEO surface
+
+`src/app/robots.ts` and `src/app/sitemap.ts` are Next metadata routes, not files
+in `public/`. Both build absolute URLs from `siteUrl()` in `src/lib/brand.ts`,
+which falls back to `http://localhost:3000` when `NEXT_PUBLIC_SITE_URL` is
+unset — so a deploy that forgets that variable publishes a sitemap full of
+localhost links. It is the one env var whose absence fails silently.
+
+The sitemap enumerates products through `commerce.getProducts()`, which returns
+published products only, so unpublishing a product drops it from the sitemap for
+free. Adding a storefront route means adding it to `staticPages` there and
+checking it against the `disallow` list in `robots.ts` (`/admin`, `/api`,
+`/checkout`, `/cart`).
+
+## Next.js 16 notes
+
+`AGENTS.md` is not boilerplate — this Next.js differs from training data. Two
+things already bitten:
+
+- **`middleware.ts` is deprecated and renamed `proxy.ts`.** Same behaviour; it
+  defaults to the Node.js runtime in v16, which is why the admin gate can verify
+  an HMAC with `node:crypto` there.
+- **`notFound()` and `redirect()` return HTTP 200 on streamed responses.** The
+  status is already sent by the time they run. The correct body renders and Next
+  injects `<meta name="robots" content="noindex">`, so this is a soft 404 by
+  design, not a bug to chase. Unmatched URLs still return a real 404.
+
+Check `node_modules/next/dist/docs/` before assuming an API works the way you
+remember.
+
+## Testing UI in the browser
+
+Synthetic events are unreliable here and have produced two false bug reports
+already. When the Browser pane's document is not focused (`document.hasFocus()`
+is false), `el.blur()` fires no event, so any save-on-blur handler silently never
+runs. Radix controls are worse: clicking the hidden native `input[type=radio]`
+does nothing, because the real control is the sibling `[role="radio"]`.
+
+Front the tab and use the `computer` tool for anything involving focus, blur or a
+Radix primitive. Reserve `javascript_tool` for reading state.
+
+## Performance
+
+Measured against a production build (`next start`), median of 7:
+
+| Route | Before | After |
+|---|---|---|
+| `/`, `/products/[slug]`, static pages | 3 ms | 3 ms |
+| `/collections/[slug]?sort=` | 671 ms | 12 ms |
+| `/admin`, `/admin/orders` | ~430 ms | ~235 ms |
+| `/admin/products` | 440 ms | ~450 ms (network-bound, see below) |
+
+What did it:
+
+- **Catalogue reads are cached** (`unstable_cache`, 60s, tagged `CATALOGUE_TAG`)
+  in `lib/commerce/local/catalog.ts`. `includeUnpublished` bypasses the cache —
+  admin must never read a shared or stale catalogue.
+- **Admin mutations call `updateTag(CATALOGUE_TAG)`**, not `revalidateTag`. This
+  is a read-your-own-writes case: `revalidateTag`'s recommended `profile="max"`
+  serves the stale value once before refreshing, which would break the "change a
+  price, see it live" moment in PRD 6.12. Verified end to end.
+- **`getCollection` no longer scans the whole catalogue** to compute one count,
+  and the collection page skips it entirely — its title and description are
+  static copy and its result count comes from the products it already loaded.
+- **List views pass `withItems: false`** so the orders table stops loading every
+  order's line items to render columns that never show them.
+
+### The remaining floor is network latency
+
+A warm `SELECT 1` against Neon costs **~220 ms** from here. That is the floor for
+any uncached route, and it dwarfs anything the query does. Two consequences:
+
+- Reducing the *number* of sequential round trips matters; micro-optimising SQL
+  does not.
+- A full `select()` on `variants` costs ~410 ms versus ~205 ms for narrow
+  columns — the `optionValues` jsonb payload is worth a whole extra round trip.
+  Dropping it would halve `/admin/products`, but `optionValues` is real data the
+  `Variant` type promises, so it is not stubbed out. If that screen ever needs to
+  be faster, give the admin table its own narrower type rather than lying in the
+  shared one.
+- Do not add `Promise.all` around queries expecting a win on a cold pool: a
+  second concurrent query forces a second TLS connection to Neon (~1.5 s), which
+  is slower than reusing one warm connection. It only pays off once the pool is
+  warm.
+
+The real fix for the admin screens is co-locating the database with the app
+region, not more application code.
+
+## Skeletons
+
+`.skeleton` in `globals.css` carries a left-slanted highlight that sweeps across
+while content loads. The slant is the gradient angle, exposed as
+`--skeleton-angle` (default `115deg`); `65deg` mirrors the lean.
+
+- Skeletons use `--skeleton` / `--skeleton-highlight`, not `--muted`. `--muted`
+  is 96% lightness, so a light band sweeping over it is invisible.
+- The sweep loops for 1.4s, over the 200ms ceiling in PRD 7.6. That rule is about
+  state transitions feeling instant; a continuous loading indicator has to be slow
+  enough to read as motion. Under `prefers-reduced-motion` the highlight is
+  removed entirely rather than shortened, or the global 0.01ms override would
+  freeze the band mid-element as a permanent diagonal stripe.
+- `Skeleton` blocks are `aria-hidden`; wrap a loading region in `SkeletonRegion`
+  so screen readers hear "loading" once instead of a wall of empty boxes.
+- **Loading is not the same state as empty.** `CartProvider` exposes `loading`
+  precisely because `cart === null` used to mean both, which flashed "Your cart is
+  empty." on every page load and "Pay Rs 0" on checkout.
+
+## Imagery
+
+Two sources, on purpose:
+
+- **Primary product frame** — generated studio artwork (`scripts/generate-images.ts`).
+  Every product shares one silhouette style, background and shadow, which is what
+  makes the grid read as a catalogue rather than a scrapbook.
+- **Hero, collection tiles, and the last frame of each product** — real
+  photography from Unsplash (`scripts/fetch-photography.ts`).
+
+### Sourcing rules — do not relax these
+
+- **Unsplash License only.** Free for commercial use, no attribution required.
+- **No identifiable people.** The licence covers the photograph, not the depicted
+  person's likeness; there is no model release. The best-matching South Asian
+  apparel shots on Unsplash are all editorial portraits, and every one of them is
+  unusable for that reason.
+- **No third-party brand marks.** Many garment-only stock shots carry visible
+  labels and hangers ("ZARA", "BROOTZ", printed slogan tees). PRD 16 forbids
+  competitor imagery.
+
+That combination rules out nearly all apparel photography on Unsplash. What
+survives is textiles, which is why photography is used for fabric detail and
+atmosphere rather than for the garment shot itself.
+
+### Do not select textures by file size
+
+PRD 16 caps images at 200KB. `next/image` re-encodes per viewport, so a 500KB
+source ships as ~38KB at 384px and the cap is not what reaches a phone. An
+earlier pass selected smooth low-detail textures to satisfy the cap literally and
+produced flat colour fields that looked like paint swatches. Select on how the
+image looks; the delivered weight is already handled.

@@ -18,6 +18,12 @@
   --destructive-foreground: 0 0% 100%;
   --success: 142 71% 28%;
   --success-foreground: 0 0% 100%;
+  /*
+   * Skeletons need their own base. --muted is 96% lightness, so a light
+   * highlight sweeping across it is invisible; this sits darker so the band reads.
+   */
+  --skeleton: 20 6% 89%;
+  --skeleton-highlight: 20 12% 97%;
   --radius: 0.5rem;
 }
 
@@ -121,9 +127,114 @@
     min-height: 44px;
     min-width: 44px;
   }
+
+  /*
+   * Inline text links — breadcrumbs, footer navigation, the wordmark — are
+   * deliberately small type, but §7.6 still wants 44px of hit area on a finger.
+   * Expanding the box only where the pointer is coarse gives touch users a
+   * proper target without making the desktop footer airy.
+   */
+  @media (pointer: coarse) {
+    .tap-link {
+      display: inline-flex;
+      align-items: center;
+      min-height: 44px;
+      /*
+       * Short labels like "Home" are only ~39px wide. The padding buys hit area
+       * on both axes and the matching negative margin cancels it visually, so
+       * nothing shifts or loses its left alignment.
+       */
+      padding-inline: 6px;
+      margin-inline: -6px;
+    }
+  }
+
+  /*
+   * Loading skeleton with a left-slanted highlight sweeping across it.
+   *
+   * The slant is the gradient angle: 115deg puts the band's top edge to the
+   * right of its bottom edge, so the line leans left as it travels. The sweep
+   * moves background-position rather than transform, so nothing is repainted
+   * outside the element and no wrapper/overflow clipping is needed.
+   *
+   * This loops for ~1.4s, which is longer than the 200ms ceiling in PRD 7.6.
+   * That rule is about state transitions feeling instant; a continuous loading
+   * indicator has to be slow enough to read as motion. Flagged deliberately.
+   */
+  .skeleton {
+    position: relative;
+    background-color: hsl(var(--skeleton));
+    background-image: linear-gradient(
+      var(--skeleton-angle, 115deg),
+      transparent 38%,
+      hsl(var(--skeleton-highlight) / 0.35) 45%,
+      hsl(var(--skeleton-highlight)) 50%,
+      hsl(var(--skeleton-highlight) / 0.35) 55%,
+      transparent 62%
+    );
+    background-repeat: no-repeat;
+    /* Wider than the element so the band fully clears it at both ends. */
+    background-size: 220% 100%;
+    background-position: 160% 0;
+    animation: skeleton-sweep 1.4s ease-in-out infinite;
+  }
+
+  @keyframes skeleton-sweep {
+    to {
+      background-position: -60% 0;
+    }
+  }
+
+  /*
+   * The global reduced-motion rule collapses the animation to 0.01ms, which
+   * would freeze the band mid-element as a permanent diagonal stripe. Drop the
+   * highlight entirely so it degrades to a plain muted block.
+   */
+  @media (prefers-reduced-motion: reduce) {
+    .skeleton {
+      background-image: none;
+    }
+  }
+
+  /* Prose for the static pages (§6.7). Sizes come from the §7.2 scale. */
+  .prose-page h1 {
+    font-size: var(--text-h1);
+    line-height: var(--text-h1--line-height);
+  }
+
+  .prose-page h2 {
+    font-size: var(--text-h2);
+    line-height: var(--text-h2--line-height);
+    margin-top: 2rem;
+  }
+
+  .prose-page p,
+  .prose-page ul {
+    margin-top: 1rem;
+    color: hsl(var(--muted-foreground));
+  }
+
+  .prose-page ul {
+    list-style: disc;
+    padding-left: 1.25rem;
+  }
+
+  .prose-page li + li {
+    margin-top: 0.5rem;
+  }
+
+  .prose-page a {
+    color: hsl(var(--foreground));
+    text-decoration: underline;
+    text-underline-offset: 4px;
+  }
 }
 
-/* Respect users who ask for less motion; nothing here animates over 200ms. */
+/*
+ * Respect users who ask for less motion. Every transition here is under 200ms
+ * (§7.6); the one exception is the skeleton sweep, which loops and is disabled
+ * outright above rather than merely shortened.
+ */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

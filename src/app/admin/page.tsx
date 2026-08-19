@@ -19,7 +19,7 @@ export default async function AdminDashboardPage() {
 
   const [stats, recent, lowStock] = await Promise.all([
     commerce.getDashboardStats(),
-    commerce.listOrders({ limit: 5 }),
+    commerce.listOrders({ limit: 5, withItems: false }),
     commerce.getLowStock(3),
   ]);
 

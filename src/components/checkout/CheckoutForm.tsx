@@ -14,6 +14,7 @@ import {
 } from '@/lib/shipping';
 import { preparePayment } from '@/server/actions/checkout';
 import { AddressForm, type AddressFields } from './AddressForm';
+import { CheckoutSkeleton } from './CheckoutSkeleton';
 import { MockPayment } from './MockPayment';
 import { OrderSummary } from './OrderSummary';
 import { ShippingMethodPicker } from './ShippingMethodPicker';
@@ -39,7 +40,7 @@ export function CheckoutForm({
   publishableKey: string | null;
 }) {
   const router = useRouter();
-  const { cart, setCart } = useCart();
+  const { cart, loading, setCart } = useCart();
 
   const [values, setValues] = React.useState<AddressFields>(EMPTY_FORM);
   const [errors, setErrors] = React.useState<Record<string, string>>({});
@@ -65,6 +66,10 @@ export function CheckoutForm({
   React.useEffect(() => {
     if (cart && cart.lines.length === 0) router.replace('/cart');
   }, [cart, router]);
+
+  // The totals below come from the client-loaded cart; rendering before it
+  // arrives would flash an empty summary and a "Pay Rs 0" button.
+  if (loading) return <CheckoutSkeleton />;
 
   function setField(field: keyof AddressFields, value: string) {
     setValues((prev) => ({ ...prev, [field]: value }));

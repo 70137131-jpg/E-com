@@ -6,6 +6,12 @@ import { currentCart } from '@/server/actions/cart';
 
 type CartContextValue = {
   cart: Cart | null;
+  /**
+   * True until the first load resolves. Without this, `cart === null` means both
+   * "still loading" and "genuinely empty", and the cart flashes its empty state
+   * on every page load before the real contents arrive.
+   */
+  loading: boolean;
   setCart: (cart: Cart | null) => void;
   isOpen: boolean;
   openCart: () => void;
@@ -24,13 +30,18 @@ const CartContext = React.createContext<CartContextValue | null>(null);
  */
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [cart, setCart] = React.useState<Cart | null>(null);
+  const [loading, setLoading] = React.useState(true);
   const [isOpen, setIsOpen] = React.useState(false);
 
   React.useEffect(() => {
     let cancelled = false;
-    currentCart().then((loaded) => {
-      if (!cancelled) setCart(loaded);
-    });
+    currentCart()
+      .then((loaded) => {
+        if (!cancelled) setCart(loaded);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
     return () => {
       cancelled = true;
     };
@@ -39,12 +50,13 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const value = React.useMemo<CartContextValue>(
     () => ({
       cart,
+      loading,
       setCart,
       isOpen,
       openCart: () => setIsOpen(true),
       closeCart: () => setIsOpen(false),
     }),
-    [cart, isOpen],
+    [cart, loading, isOpen],
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

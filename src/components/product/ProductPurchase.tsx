@@ -103,7 +103,10 @@ export function ProductPurchase({ product }: { product: Product }) {
 
       <p className="text-sm text-muted-foreground">
         Free standard delivery over Rs 5,000.{' '}
-        <Link href="/shipping-returns" className="underline underline-offset-2 hover:text-foreground">
+        <Link
+          href="/shipping-returns"
+          className="tap-link underline underline-offset-2 hover:text-foreground"
+        >
           Shipping &amp; Returns
         </Link>
       </p>

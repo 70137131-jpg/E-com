@@ -313,7 +313,7 @@ export async function getOrderByPaymentIntent(pi: string): Promise<Order | null>
 }
 
 export async function listOrders(
-  opts: { status?: OrderStatus; limit?: number } = {},
+  opts: { status?: OrderStatus; limit?: number; withItems?: boolean } = {},
 ): Promise<Order[]> {
   const rows = await db
     .select()
@@ -321,6 +321,12 @@ export async function listOrders(
     .where(opts.status ? eq(orders.status, opts.status) : undefined)
     .orderBy(desc(orders.createdAt))
     .limit(opts.limit ?? 200);
+
+  // List views render number, customer, total and status — never line items.
+  // Loading order_items for every row is a second query over hundreds of rows
+  // whose result is then thrown away, so it is opt-in.
+  if (opts.withItems === false) return rows.map((row) => toOrder(row, []));
+
   return withItems(rows);
 }
 
@@ -353,15 +359,17 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   const end = new Date(start);
   end.setDate(end.getDate() + 1);
 
-  const todays = await db
-    .select({ total: orders.totalCents, status: orders.status })
-    .from(orders)
-    .where(and(gte(orders.createdAt, start), lte(orders.createdAt, end)));
-
-  const [{ value: awaiting }] = await db
-    .select({ value: count() })
-    .from(orders)
-    .where(eq(orders.status, 'paid'));
+  // Independent queries: one round trip's latency instead of two.
+  const [todays, [{ value: awaiting }]] = await Promise.all([
+    db
+      .select({ total: orders.totalCents, status: orders.status })
+      .from(orders)
+      .where(and(gte(orders.createdAt, start), lte(orders.createdAt, end))),
+    db
+      .select({ value: count() })
+      .from(orders)
+      .where(eq(orders.status, 'paid')),
+  ]);
 
   const billable = todays.filter((o) => o.status !== 'cancelled');
 

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { buttonVariants } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
+import { CartSkeleton } from './CartSkeleton';
 import { formatMoney } from '@/lib/money';
 import { cn } from '@/lib/utils';
 import { CartLineItem } from './CartLineItem';
@@ -19,8 +20,12 @@ export function CartContents({
   variant: 'drawer' | 'page';
   onNavigate?: () => void;
 }) {
-  const { cart } = useCart();
+  const { cart, loading } = useCart();
   const lines = cart?.lines ?? [];
+
+  // Loading and empty are different states; showing "Your cart is empty." while
+  // the cart is still in flight is worse than showing nothing.
+  if (loading) return <CartSkeleton variant={variant} />;
 
   if (lines.length === 0) {
     return (
