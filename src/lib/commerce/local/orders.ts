@@ -10,6 +10,8 @@ import type {
   Order,
   OrderItem,
   OrderStatus,
+  ProductBefore,
+  VariantBefore,
 } from '../types';
 import { StockError } from '../types';
 
@@ -388,20 +390,46 @@ export async function getLowStock(threshold = 3): Promise<LowStockRow[]> {
     .orderBy(variants.stock);
 }
 
+/**
+ * Returns the row as it was *before* the patch, so the caller can record an
+ * audit entry without a second round trip or a getter on the interface. Null
+ * when nothing changed or the variant does not exist.
+ */
 export async function updateVariant(
   variantId: string,
   patch: { priceCents?: number; stock?: number },
-): Promise<void> {
+): Promise<VariantBefore | null> {
   const set: Partial<typeof variants.$inferInsert> = {};
   if (patch.priceCents !== undefined) set.priceCents = patch.priceCents;
   if (patch.stock !== undefined) set.stock = patch.stock;
-  if (Object.keys(set).length === 0) return;
+  if (Object.keys(set).length === 0) return null;
+
+  const [before] = await db
+    .select({ sku: variants.sku, priceCents: variants.priceCents, stock: variants.stock })
+    .from(variants)
+    .where(eq(variants.id, variantId))
+    .limit(1);
+  if (!before) return null;
+
   await db.update(variants).set(set).where(eq(variants.id, variantId));
+  return before;
 }
 
-export async function setProductPublished(productId: string, published: boolean): Promise<void> {
+/** Same contract as updateVariant: the state before the change, or null. */
+export async function setProductPublished(
+  productId: string,
+  published: boolean,
+): Promise<ProductBefore | null> {
+  const [before] = await db
+    .select({ title: products.title, published: products.published })
+    .from(products)
+    .where(eq(products.id, productId))
+    .limit(1);
+  if (!before) return null;
+
   await db
     .update(products)
     .set({ published, updatedAt: new Date() })
     .where(eq(products.id, productId));
+  return before;
 }

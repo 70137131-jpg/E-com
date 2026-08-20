@@ -176,6 +176,34 @@ rules are built on those strings, so renaming one is a breaking change.
 place, no hard dependency. A throwing sink is swallowed: an alerting failure
 must never become an order-creation failure.
 
+### Audit trail
+
+`audit_log` records every admin mutation — status changes, price and stock
+edits, publish toggles — via `recordAudit()` in `server/services/audit.ts`.
+Price and stock are separate actions so "who discounted this" is not buried in
+stock corrections, and a no-op edit is not recorded.
+
+The two admin mutations on `CommerceProvider` return the row **as it was before
+the change** rather than `void`, which is how the diff is captured without a
+getter on the interface or a second round trip. A Shopify adapter has to honour
+that too.
+
+Two properties worth keeping:
+
+- **Best-effort and post-hoc.** It runs after the mutation commits, and a write
+  failure is logged (`audit.write_failed`), never thrown — refusing a price
+  change because the audit insert failed is worse than the missing row. The
+  honest limit: this is good enough to answer "who changed the price and when",
+  and not good enough to be evidence. A tamper-evident trail needs
+  same-transaction writes and an append-only grant at the database level.
+- **Attribution is only as good as the auth.** `/admin` is one shared password,
+  so `actor` is the constant `'admin'` and `actorIp` is the only distinguishing
+  detail. Per-person attribution needs per-user accounts (Phase 2).
+
+`db:seed` truncates `audit_log` along with the commerce tables, so a reseed does
+not leave entries pointing at entity ids that no longer exist. A real deployment
+must never truncate it.
+
 ## Styling
 
 Tailwind v4 with tokens defined in `src/app/globals.css` under `@theme inline`.

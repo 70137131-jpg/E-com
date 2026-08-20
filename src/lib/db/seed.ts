@@ -8,7 +8,7 @@
  */
 import { sql } from 'drizzle-orm';
 import { db, pool } from './index';
-import { orderItems, orders, products, variants } from './schema';
+import { auditLog, orderItems, orders, products, variants } from './schema';
 import { buildVariants, CATALOG, productImages } from './catalog-data';
 import { shippingCostCents, type ShippingMethodKey } from '../shipping';
 
@@ -97,7 +97,9 @@ async function main() {
 
   // Order matters: children before parents.
   await db.execute(
-    sql`truncate table ${orderItems}, ${orders}, ${variants}, ${products} restart identity cascade`,
+    // audit_log is included so a reseed does not leave entries pointing at
+    // entity ids that no longer exist. A real deployment must never truncate it.
+    sql`truncate table ${auditLog}, ${orderItems}, ${orders}, ${variants}, ${products} restart identity cascade`,
   );
 
   const bySku = new Map<string, SeededVariant>();

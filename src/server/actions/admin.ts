@@ -9,6 +9,7 @@ import {
   updateVariantSchema,
 } from '@/lib/validation/admin';
 import { assertAdmin } from '../admin-auth';
+import { recordAudit } from '../services/audit';
 import { log } from '@/lib/log';
 
 export type ActionResult = { ok: boolean; message?: string };
@@ -31,7 +32,17 @@ export async function updateOrderStatus(input: {
   if (!parsed.success) return { ok: false, message: 'Something went wrong. Please try again.' };
 
   try {
+    const before = await commerce.getOrder(parsed.data.orderId);
     const order = await commerce.updateOrderStatus(parsed.data.orderId, parsed.data.status);
+
+    await recordAudit({
+      action: 'order.status_changed',
+      entityType: 'order',
+      entityId: order.id,
+      entityLabel: order.orderNumber,
+      changes: { status: { from: before?.status ?? null, to: order.status } },
+    });
+
     revalidatePath('/admin');
     revalidatePath('/admin/orders');
     revalidatePath(`/admin/orders/${parsed.data.orderId}`);
@@ -65,10 +76,32 @@ export async function updateVariant(input: {
   if (!parsed.success) return { ok: false, message: 'Enter a whole number.' };
 
   try {
-    await commerce.updateVariant(parsed.data.variantId, {
+    const before = await commerce.updateVariant(parsed.data.variantId, {
       priceCents: parsed.data.priceCents,
       stock: parsed.data.stock,
     });
+
+    // Price and stock are separate actions: an operator looking for "who
+    // discounted this" should not have to read through stock corrections.
+    if (before && parsed.data.priceCents !== undefined && parsed.data.priceCents !== before.priceCents) {
+      await recordAudit({
+        action: 'variant.price_changed',
+        entityType: 'variant',
+        entityId: parsed.data.variantId,
+        entityLabel: before.sku,
+        changes: { priceCents: { from: before.priceCents, to: parsed.data.priceCents } },
+      });
+    }
+    if (before && parsed.data.stock !== undefined && parsed.data.stock !== before.stock) {
+      await recordAudit({
+        action: 'variant.stock_changed',
+        entityType: 'variant',
+        entityId: parsed.data.variantId,
+        entityLabel: before.sku,
+        changes: { stock: { from: before.stock, to: parsed.data.stock } },
+      });
+    }
+
     revalidateCatalogue();
     return { ok: true };
   } catch (err) {
@@ -87,7 +120,21 @@ export async function setProductPublished(input: {
   if (!parsed.success) return { ok: false, message: 'Something went wrong. Please try again.' };
 
   try {
-    await commerce.setProductPublished(parsed.data.productId, parsed.data.published);
+    const before = await commerce.setProductPublished(
+      parsed.data.productId,
+      parsed.data.published,
+    );
+
+    if (before && before.published !== parsed.data.published) {
+      await recordAudit({
+        action: 'product.published_changed',
+        entityType: 'product',
+        entityId: parsed.data.productId,
+        entityLabel: before.title,
+        changes: { published: { from: before.published, to: parsed.data.published } },
+      });
+    }
+
     revalidateCatalogue();
     return { ok: true };
   } catch (err) {
