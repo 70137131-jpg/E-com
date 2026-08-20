@@ -1,6 +1,7 @@
 import { and, count, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { cartItems, carts, orderItems, orders, products, variants } from '@/lib/db/schema';
+import { canTransition } from '@/lib/order-status';
 import { shippingCostCents, type ShippingMethodKey } from '@/lib/shipping';
 import type {
   CreateOrderInput,
@@ -331,19 +332,12 @@ export async function listOrders(
 }
 
 /** PRD 12.5 - the only legal transitions. Enforced here, not just in the UI. */
-const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
-  pending: ['cancelled'],
-  paid: ['fulfilled', 'cancelled'],
-  fulfilled: [],
-  cancelled: [],
-};
-
 export async function updateOrderStatus(id: string, status: OrderStatus): Promise<Order> {
   const [row] = await db.select().from(orders).where(eq(orders.id, id)).limit(1);
   if (!row) throw new Error('Order not found');
 
   const from = row.status as OrderStatus;
-  if (!ALLOWED_TRANSITIONS[from].includes(status)) {
+  if (!canTransition(from, status)) {
     throw new Error(`Cannot move an order from ${from} to ${status}.`);
   }
 

@@ -25,15 +25,47 @@ Two consequences worth internalising:
 
 ```bash
 npm run dev              # dev server (prefer the Browser pane / launch.json over bare bash)
-npm run typecheck        # tsc --noEmit — the only automated check in the repo
+npm run typecheck        # tsc --noEmit
+npm test                 # vitest run — unit tests, no database needed
 npm run build
-npm run db:push          # apply schema.ts to Neon (no migration files yet)
+npm run db:generate      # write a migration from schema.ts changes
+npm run db:migrate       # apply pending migrations (the deploy path)
+npm run db:push          # sync schema.ts straight to the DB — local scratch only
 npm run db:seed          # truncate + reseed catalogue and order history; idempotent
 npm run images:generate  # regenerate public/products/*.webp from catalog-data.ts
 ```
 
-There is no test suite and no linter configured. `npm run typecheck` is the gate —
-run it after any change.
+`npm run typecheck && npm test` is the gate; CI runs both plus the build.
+
+**Schema changes go through migrations, not `db:push`.** Push diffs the schema
+and applies the result directly: no version history, no rollback, and it will
+drop a column it believes is gone. That is fine against a scratch database and
+unacceptable once real orders exist. Edit `schema.ts`, run `db:generate`, commit
+the SQL under `src/lib/db/migrations/`, and let `db:migrate` apply it. A database
+that predates the migrations adopts the baseline once with
+`npm run db:migrate -- --baseline`, which records 0000 as applied without
+executing it.
+
+### What the tests cover, and why those things
+
+`npm test` is deliberately unit-only so it runs offline in under a second. It
+covers the pure rules where a silent change costs money: the shipping table and
+its free-shipping boundary, the order status machine, HMAC sign/verify (every
+test there is an attack), the rate limiter, and the money helpers.
+
+Two things worth knowing before adding to it:
+
+- **`formatMoney` uses a non-breaking space** (U+00A0), so `formatMoney(450000)`
+  is `"Rs 4,500"`. An assertion written with a normal space fails while
+  looking identical in the diff. Normalise, or match with `\s` — which does
+  cover U+00A0.
+- **`server-only` throws when imported outside a Server Component graph**, which
+  includes Vitest. `vitest.config.ts` aliases it to a stub so server modules are
+  testable; the real guard still applies to the app build.
+
+`priceCart()` and `fulfilPayment()` are not unit-tested — both open a database
+pool at import. Testing them needs a throwaway Neon branch, which is the
+integration tier and is not built yet.
 
 ## Architecture: two boundaries that must not leak
 
@@ -83,7 +115,27 @@ that way when touching either gateway.
   during their render — that opts them out of caching. `CartProvider` loads the
   cart client-side after mount for exactly this reason.
 - **Server actions re-validate everything with zod** even though the client also
-  validates. Client validation is convenience only.
+  validates. Client validation is convenience only. Validate with `z.enum`, not
+  a `key in TABLE` check: `in` walks the prototype chain, so `__proto__` and
+  `constructor` passed `isShippingMethodKey()` and turned an order total into
+  `NaN` via `SHIPPING_METHODS['__proto__'].priceCents`. Use
+  `Object.prototype.hasOwnProperty.call`.
+- **Do not add CSRF tokens to admin forms.** Next already does it: server
+  actions are POST-only, compare `Origin` against `Host`/`X-Forwarded-Host` and
+  reject mismatches, and ship encrypted action IDs; the admin cookie is
+  `sameSite: 'lax'`. All three admin mutations are server actions. The two route
+  handlers are not, and carry their own auth instead — Stripe signature
+  verification, and an HMAC token on the mock gateway that self-disables when
+  Stripe is configured. If this ever runs behind a proxy on a different host,
+  set `serverActions.allowedOrigins` rather than inventing tokens.
+- **Rate limiting is in-process and therefore per-instance** (`lib/rate-limit.ts`).
+  Two instances behind a load balancer allow twice the traffic, and a
+  per-request serverless isolate disables it entirely. It is applied to admin
+  login, where one shared password plus unlimited guesses is the whole attack.
+  The interface matches `@upstash/ratelimit` so moving to Redis is a change of
+  implementation, not of call sites. A throttled attempt returns the same
+  "Incorrect password." string as a wrong one — saying "rate limited" confirms
+  both that the endpoint exists and how long to wait.
 - **Cart quantity clamps, it does not reject** (PRD 6.4). The drawer's stepper
   stays live at the stock ceiling (`allowServerClamp`) so the attempt reaches
   `updateLine()`, which clamps and returns "Only {n} left. Quantity reduced." for

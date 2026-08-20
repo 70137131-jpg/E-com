@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A deploy must never race a migration, and two migration runs must never
+# overlap. One CI run per ref at a time.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Typecheck, test, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build
+        env:
+          # The build prerenders the catalogue, so it needs a database. Point
+          # this at a Neon branch, never at production.
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          # Boot-time env audit (src/lib/env.ts) — CI is not a real storefront,
+          # so its fallbacks are expected.
+          DEMO_MODE: 'true'
+          NEXT_PUBLIC_SITE_URL: http://localhost:3000
+          ADMIN_COOKIE_SECRET: ci-placeholder-secret-at-least-32-chars
+          ADMIN_PASSWORD: ci-placeholder
+        run: npm run build
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      # Runtime dependencies are what ships. A dev-only advisory should not
+      # block a release, so it is reported without failing the job.
+      - name: Audit runtime dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Audit dev dependencies (advisory only)
+        run: npm audit --audit-level=moderate || true
+
+  migrate:
+    name: Apply migrations
+    needs: check
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    # Requires a reviewer on the environment if you configure one, so a schema
+    # change cannot reach production unattended.
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Migrate
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        run: npm run db:migrate

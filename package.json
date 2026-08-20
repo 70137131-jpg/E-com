@@ -10,7 +10,10 @@
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
     "db:seed": "tsx --env-file=.env.local src/lib/db/seed.ts",
-    "images:generate": "tsx scripts/generate-images.ts"
+    "images:generate": "tsx scripts/generate-images.ts",
+    "db:migrate": "tsx --env-file=.env.local scripts/migrate.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.23",
@@ -48,6 +51,7 @@
     "sharp": "^0.35.3",
     "tailwindcss": "^4",
     "tsx": "^4.23.12",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3.2.7"
   }
 }
