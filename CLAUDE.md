@@ -25,6 +25,7 @@ Two consequences worth internalising:
 
 ```bash
 npm run dev              # dev server (prefer the Browser pane / launch.json over bare bash)
+npm run lint             # eslint . — `next lint` was REMOVED in Next.js 16
 npm run typecheck        # tsc --noEmit
 npm test                 # vitest run — unit tests, no database needed
 npm run build
@@ -35,7 +36,15 @@ npm run db:seed          # truncate + reseed catalogue and order history; idempo
 npm run images:generate  # regenerate public/products/*.webp from catalog-data.ts
 ```
 
-`npm run typecheck && npm test` is the gate; CI runs both plus the build.
+`npm run lint && npm run typecheck && npm test` is the gate; CI runs all three
+plus the build.
+
+**`next lint` does not exist in this version** — it was removed in Next.js 16 in
+favour of the ESLint CLI, so linting is `eslint .` against `eslint.config.mjs`
+(flat config). The config uses `core-web-vitals`, which promotes the rules that
+affect LCP and CLS from warnings to errors; PRD 17.1 sets Lighthouse targets and
+a raw `<img>` is the usual way to lose them. `public/` and the drizzle migration
+snapshots are ignored as generated output.
 
 **Schema changes go through migrations, not `db:push`.** Push diffs the schema
 and applies the result directly: no version history, no rollback, and it will
