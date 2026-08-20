@@ -84,6 +84,9 @@ export function CartLineItem({ line, onNavigate }: { line: CartLine; onNavigate?
               max={Math.max(line.availableStock, 1)}
               disabled={pending}
               label={`Quantity for ${line.productTitle}`}
+              // PRD 6.4: clamped, not rejected — the notice below renders what
+              // the server sends back.
+              allowServerClamp
             />
             <span className="tabular text-sm font-medium">{formatMoney(line.lineTotalCents)}</span>
           </div>

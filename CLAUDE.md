@@ -84,6 +84,20 @@ that way when touching either gateway.
   cart client-side after mount for exactly this reason.
 - **Server actions re-validate everything with zod** even though the client also
   validates. Client validation is convenience only.
+- **Cart quantity clamps, it does not reject** (PRD 6.4). The drawer's stepper
+  stays live at the stock ceiling (`allowServerClamp`) so the attempt reaches
+  `updateLine()`, which clamps and returns "Only {n} left. Quantity reduced." for
+  the line to render. Disabling the button at `max` looks tidier but makes that
+  specified string unreachable — and `max` is only the stock the client last
+  heard about. The product page keeps the bounded stepper; only the cart opts in.
+- **The cart drawer restores focus by hand.** It is opened programmatically and
+  has no Radix `Trigger`, so Radix's own `onCloseAutoFocus` calls
+  `preventDefault()` and then focuses a null ref — focus lands on `<body>` and
+  keyboard users lose their place. `openCart(opener)` records the control and
+  `restoreOpenerFocus()` returns focus on close. Pass the opener **explicitly**
+  from inside a transition (`AddToCartButton`): by the time the action resolves
+  that button is disabled by its own loading state and `document.activeElement`
+  has already moved to `<body>`.
 
 ## Styling
 
@@ -107,6 +121,20 @@ licensed photography; swapping in real photos means overwriting the files in
 Seeded stock is deliberately uneven: some variants at 1–3 (shows "Only n left"),
 one at 0 (shows out of stock). Preserve that when editing seed data — it is what
 makes the demo read as a real store.
+
+**`npm run db:seed` does not invalidate any cache.** It writes straight to
+Postgres, so it never calls `updateTag(CATALOGUE_TAG)` the way an admin mutation
+does, and it cannot touch the on-disk ISR cache either. After reseeding, the
+storefront keeps serving the previous catalogue — through a full server restart,
+because `.next/cache` survives one. Symptoms are alarming and misleading: a
+product you just restored still 404s, an old price persists, an item stays
+missing from its collection. The fix is to rebuild:
+
+```bash
+rm -rf .next/cache && npm run build
+```
+
+Reseed *before* the build, never between the build and the demo.
 
 ## Environment
 
@@ -176,6 +204,31 @@ does nothing, because the real control is the sibling `[role="radio"]`.
 
 Front the tab and use the `computer` tool for anything involving focus, blur or a
 Radix primitive. Reserve `javascript_tool` for reading state.
+
+### Streamed pages appear frozen on their skeleton — this is the pane, not a bug
+
+If the Browser pane is not displayed it does not composite frames, so
+`requestAnimationFrame` never fires. React 19 does not swap a Suspense boundary
+inline any more: it queues the reveal in `$RB` and flushes it from `$RV` behind a
+rAF callback. No rAF, no reveal — **the `loading.tsx` fallback stays on screen
+forever**, and in a production build it surfaces as `Minified React error #441`.
+
+Only streamed routes are affected, which is why it looks like an `/admin` bug:
+every admin page reads cookies and so renders dynamically, while every storefront
+page is static or ISR and ships its content inside the shell. Soft navigation is
+fine — it never streams.
+
+This cost a full day's misdiagnosis and nearly had the admin skeletons deleted.
+Before blaming app code, check `document.hidden` and `typeof $RT`; `undefined`
+means no rAF has run. To unstick a page for inspection:
+
+```js
+if (window.$RB && window.$RB.length) window.$RV(window.$RB);
+```
+
+Rule of thumb: a boundary that never resolves *and* leaves its
+`template[id^="B:"]` in the DOM is this, every time. A real hang has different
+symptoms — no content in the matching `div[hidden][id^="S:"]`.
 
 ## Performance
 

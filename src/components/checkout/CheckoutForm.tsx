@@ -62,10 +62,13 @@ export function CheckoutForm({
       : SHIPPING_METHODS[shippingMethod].priceCents;
   const totalCents = subtotalCents + shippingCents;
 
-  // An empty cart has nothing to check out (PRD 6.5 states).
+  // An empty cart has nothing to check out (PRD 6.5 states). `cart` is null both
+  // while loading and when the shopper has no cart cookie at all — the second
+  // case is the common one (fresh visitor, or straight after an order clears the
+  // cookie), so the guard has to wait for `loading` rather than for a truthy cart.
   React.useEffect(() => {
-    if (cart && cart.lines.length === 0) router.replace('/cart');
-  }, [cart, router]);
+    if (!loading && (!cart || cart.lines.length === 0)) router.replace('/cart');
+  }, [cart, loading, router]);
 
   // The totals below come from the client-loaded cart; rendering before it
   // arrives would flash an empty summary and a "Pay Rs 0" button.
