@@ -2,8 +2,15 @@
  * Brand constants. Fictional throughout (PRD A10) - nothing here belongs to a
  * real business.
  */
+/**
+ * The demo's fictional name, used when NEXT_PUBLIC_BRAND_NAME is unset. Exported
+ * so lib/env.ts can name it when it refuses to boot a real deployment still
+ * wearing it.
+ */
+export const BRAND_FALLBACK_NAME = 'Karakoram Threads';
+
 export const BRAND = {
-  name: process.env.NEXT_PUBLIC_BRAND_NAME || 'Karakoram Threads',
+  name: process.env.NEXT_PUBLIC_BRAND_NAME || BRAND_FALLBACK_NAME,
   tagline: 'Considered clothing, made in Pakistan',
   email: 'hello@karakoramthreads.pk',
   phone: '+92 21 3455 0180',

@@ -207,12 +207,19 @@ export function CheckoutForm({
               )}
             </div>
 
-            {/* PRD 9.4 - so the client can buy something unassisted. */}
-            <p className="mt-4 rounded-[var(--radius)] bg-muted px-4 py-3 text-sm text-muted-foreground">
-              <strong className="font-medium text-foreground">Demo store</strong> — use card{' '}
-              <span className="tabular">4242 4242 4242 4242</span>, any future expiry, any CVC, any
-              postal code. No real payment is taken.
-            </p>
+            {/*
+              PRD 9.4 - so the client can buy something unassisted. Tied to the
+              mock gateway on purpose: with live Stripe keys this would tell real
+              shoppers to pay with a test card and promise that no payment is
+              taken, on a form that charges them.
+            */}
+            {mode === 'mock' ? (
+              <p className="mt-4 rounded-[var(--radius)] bg-muted px-4 py-3 text-sm text-muted-foreground">
+                <strong className="font-medium text-foreground">Demo store</strong> — use card{' '}
+                <span className="tabular">4242 4242 4242 4242</span>, any future expiry, any CVC, any
+                postal code. No real payment is taken.
+              </p>
+            ) : null}
           </section>
 
           <Button type="submit" size="lg" full loading={processing}>

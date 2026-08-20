@@ -1,5 +1,6 @@
 import 'server-only';
 import { Resend } from 'resend';
+import { BRAND } from '@/lib/brand';
 import type { Order } from '@/lib/commerce/types';
 import { orderConfirmationHtml, orderConfirmationSubject } from './templates/order-confirmation';
 
@@ -11,7 +12,10 @@ import { orderConfirmationHtml, orderConfirmationSubject } from './templates/ord
 export async function sendOrderConfirmation(order: Order): Promise<void> {
   const subject = orderConfirmationSubject(order);
   const html = orderConfirmationHtml(order);
-  const from = process.env.EMAIL_FROM || 'Karakoram Threads <onboarding@resend.dev>';
+  // resend.dev is Resend's shared sandbox sender: it works without domain setup
+  // but fails SPF/DKIM alignment for your own domain, so real mail lands in
+  // spam. lib/env.ts refuses to boot a non-demo build with EMAIL_FROM unset.
+  const from = process.env.EMAIL_FROM || `${BRAND.name} <onboarding@resend.dev>`;
   const apiKey = process.env.RESEND_API_KEY;
 
   if (!apiKey) {

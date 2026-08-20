@@ -146,6 +146,29 @@ Resend logs the rendered email instead of sending it. Never commit `.env.local`.
 `next.config.ts` sets a CSP that explicitly allows `js.stripe.com` in `script-src`
 and `frame-src`. Adding any third-party script means editing that list.
 
+### DEMO_MODE is the go-live gate
+
+Every fallback above is **silent**, which is right for a demo and dangerous for a
+real store: forget `NEXT_PUBLIC_SITE_URL` and the sitemap advertises localhost;
+forget Stripe and the shop hands out product for free. `src/lib/env.ts` audits
+the environment from `instrumentation.ts` at boot.
+
+- `DEMO_MODE=true` — fallbacks allowed, each one logged as a `[env] WARN`.
+  Required to run this repo; it is set in `.env.example`.
+- unset — those same fallbacks are **fatal**. Next reports a failed
+  instrumentation hook and every request returns 500, so a platform health check
+  fails the deploy instead of promoting a store that takes no money.
+
+Handover is therefore: drop `DEMO_MODE`, read what it refuses on, fix each one.
+`GO-LIVE.md` is the runbook. Keep new fallbacks honest — if you add one that
+would embarrass a real store, add it to `auditEnv()` in the same commit.
+
+Two demo tells already self-disable on `stripeConfigured()`, verified against a
+production build with placeholder keys: `/api/mock-payment/confirm` returns 404,
+and the "Demo store — use card 4242…" note on checkout is gated on
+`mode === 'mock'`. Anything else that says "demo" out loud belongs behind the
+same check, not in a handover checklist a human has to remember.
+
 ## Route structure
 
 Storefront routes live under `src/app/(shop)/` and get the header, footer and cart
