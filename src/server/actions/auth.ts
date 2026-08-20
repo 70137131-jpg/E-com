@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import { clientKey, rateLimit } from '@/lib/rate-limit';
 import { loginSchema } from '@/lib/validation/admin';
 import { endAdminSession, passwordMatches, startAdminSession } from '../admin-auth';
+import { log } from '@/lib/log';
 
 /** /admin is one shared password, so unlimited guesses is the whole attack. */
 const LOGIN_LIMIT = { limit: 10, windowSeconds: 15 * 60 };
@@ -20,7 +21,7 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
   // attacker a slot whether or not the field parsed.
   const limit = rateLimit(clientKey(await headers(), 'admin-login'), LOGIN_LIMIT);
   if (!limit.ok) {
-    console.warn(`[admin] login rate-limited, retry in ${limit.retryAfter}s`);
+    log.warn('admin.login_rate_limited', { retryAfter: limit.retryAfter });
     // Deliberately the same string as a wrong password (PRD 6.9): telling an
     // attacker they hit a limit confirms they found the login and tells them
     // exactly how long to wait.
@@ -31,7 +32,7 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
   if (!parsed.success) return { error: 'Incorrect password.' };
 
   if (!passwordMatches(parsed.data.password)) {
-    console.info('[admin] failed login attempt');
+    log.info('admin.login_failed');
     return { error: 'Incorrect password.' };
   }
 

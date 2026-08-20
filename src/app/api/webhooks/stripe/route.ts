@@ -1,8 +1,18 @@
 import { NextResponse } from 'next/server';
 import type Stripe from 'stripe';
+import { ALERT_EVENTS, log } from '@/lib/log';
 import { parseStripeMetadata, stripe } from '@/lib/payments/stripe';
 import { stripeConfigured } from '@/lib/payments/provider';
 import { fulfilPayment } from '@/server/services/orders';
+
+/**
+ * Postgres unique_violation. `createOrder` is idempotent via
+ * orders.payment_intent_id UNIQUE, but two deliveries arriving at once can still
+ * lose the insert race — that is the constraint doing its job, not an incident.
+ */
+function isDuplicateDelivery(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && (err as { code?: string }).code === '23505';
+}
 
 /**
  * PRD 14 / 13.2 step 9-11.
@@ -28,11 +38,13 @@ export async function POST(request: Request) {
   try {
     event = stripe().webhooks.constructEvent(payload, signature, secret);
   } catch (err) {
-    console.error('[webhook] signature verification failed', err);
+    // Not alerted: unsigned traffic hitting a public URL is background noise,
+    // and a real Stripe delivery cannot land here.
+    log.warn('webhook.bad_signature', { err });
     return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
   }
 
-  console.info(`[webhook] received ${event.type} id=${event.id}`);
+  log.info('webhook.received', { type: event.type, eventId: event.id });
 
   try {
     switch (event.type) {
@@ -40,7 +52,14 @@ export async function POST(request: Request) {
         const intent = event.data.object;
         const metadata = parseStripeMetadata(intent.metadata);
         if (!metadata) {
-          console.error(`[webhook] pi=${intent.id} has no usable metadata; ignoring`);
+          // Stripe took the money and we cannot tell what it was for. Nothing
+          // downstream will ever create this order.
+          log.alert(ALERT_EVENTS.WEBHOOK_FAILED, {
+            reason: 'missing_metadata',
+            paymentIntentId: intent.id,
+            eventId: event.id,
+            amountReceived: intent.amount_received,
+          });
           break;
         }
         await fulfilPayment(intent.id, metadata);
@@ -49,9 +68,10 @@ export async function POST(request: Request) {
 
       case 'payment_intent.payment_failed': {
         const intent = event.data.object;
-        console.info(
-          `[webhook] payment failed pi=${intent.id} reason=${intent.last_payment_error?.message ?? 'unknown'}`,
-        );
+        log.info('webhook.payment_failed', {
+          paymentIntentId: intent.id,
+          reason: intent.last_payment_error?.message ?? 'unknown',
+        });
         break;
       }
 
@@ -59,9 +79,14 @@ export async function POST(request: Request) {
         break;
     }
   } catch (err) {
-    // A duplicate delivery loses the unique-constraint race harmlessly; anything
-    // else is logged but still acknowledged so Stripe does not hammer us.
-    console.error('[webhook] handler error', err);
+    // Still acknowledged either way, so Stripe does not hammer us (PRD 13.3).
+    // But a swallowed error here means money moved and the order may not exist,
+    // which is the single most expensive thing that can fail silently.
+    if (isDuplicateDelivery(err)) {
+      log.info('webhook.duplicate_ignored', { eventId: event.id });
+    } else {
+      log.alert(ALERT_EVENTS.WEBHOOK_FAILED, { reason: 'handler_error', eventId: event.id, err });
+    }
   }
 
   return NextResponse.json({ received: true });

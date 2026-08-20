@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { mockCardOutcome, parseMockToken } from '@/lib/payments/mock';
 import { stripeConfigured } from '@/lib/payments/provider';
 import { fulfilPayment } from '@/server/services/orders';
+import { log } from '@/lib/log';
 
 /**
  * The mock gateway's equivalent of the Stripe webhook.
@@ -32,7 +33,7 @@ export async function POST(request: Request) {
 
   const outcome = mockCardOutcome(body.cardNumber ?? '');
   if (!outcome.ok) {
-    console.info(`[payment] declined pi=${payload.paymentIntentId} reason=${outcome.reason}`);
+    log.info('payment.declined', { paymentIntentId: payload.paymentIntentId, reason: outcome.reason });
     return NextResponse.json({ ok: false, reason: outcome.reason });
   }
 
@@ -40,7 +41,7 @@ export async function POST(request: Request) {
     const order = await fulfilPayment(payload.paymentIntentId, payload.metadata);
     return NextResponse.json({ ok: true, orderNumber: order.orderNumber });
   } catch (err) {
-    console.error('[payment] mock confirm failed', err);
+    log.error('payment.mock_confirm_failed', { err });
     return NextResponse.json(
       { ok: false, reason: 'Something went wrong. Please try again' },
       { status: 500 },

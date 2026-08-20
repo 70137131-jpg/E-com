@@ -9,6 +9,7 @@ import {
   updateVariantSchema,
 } from '@/lib/validation/admin';
 import { assertAdmin } from '../admin-auth';
+import { log } from '@/lib/log';
 
 export type ActionResult = { ok: boolean; message?: string };
 
@@ -36,7 +37,7 @@ export async function updateOrderStatus(input: {
     revalidatePath(`/admin/orders/${parsed.data.orderId}`);
     return { ok: true, message: `Order ${order.orderNumber} is now ${order.status}.` };
   } catch (err) {
-    console.error('[admin] updateOrderStatus failed', err);
+    log.error('admin.update_order_status_failed', { err });
     return {
       ok: false,
       message: err instanceof Error ? err.message : 'Something went wrong. Please try again.',
@@ -71,7 +72,7 @@ export async function updateVariant(input: {
     revalidateCatalogue();
     return { ok: true };
   } catch (err) {
-    console.error('[admin] updateVariant failed', err);
+    log.error('admin.update_variant_failed', { err });
     return { ok: false, message: 'Something went wrong. Please try again.' };
   }
 }
@@ -90,7 +91,7 @@ export async function setProductPublished(input: {
     revalidateCatalogue();
     return { ok: true };
   } catch (err) {
-    console.error('[admin] setProductPublished failed', err);
+    log.error('admin.set_published_failed', { err });
     return { ok: false, message: 'Something went wrong. Please try again.' };
   }
 }

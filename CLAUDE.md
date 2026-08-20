@@ -151,6 +151,31 @@ that way when touching either gateway.
   that button is disabled by its own loading state and `document.activeElement`
   has already moved to `<body>`.
 
+## Logging and alerts
+
+`lib/log.ts`, not `console.*`. One JSON line per entry in production, readable
+in development. The `event` field is a stable machine key — dashboards and alert
+rules are built on those strings, so renaming one is a breaking change.
+
+`log.alert()` is reserved for the failures that cost money quietly, enumerated in
+`ALERT_EVENTS` so they can be listed in an alerting rule:
+
+- `webhook.failed` — Stripe took the money and the order may not exist. The
+  handler still returns 200 so Stripe stops retrying (PRD 13.3), which is
+  exactly why the failure needs to be loud somewhere else. A duplicate delivery
+  losing the unique-constraint race (Postgres `23505`) is *not* an incident and
+  is logged at info.
+- `order.stock_conflict` — payment succeeded, the guarded decrement did not, so
+  the order is `pending` and someone has been charged for stock that may not
+  exist (PRD 13.4).
+- `email.failed` — the shopper paid and will hear nothing. Deliberately silent
+  to the shopper so mail cannot break checkout, which is the whole reason it
+  needs an alert.
+
+`setAlertSink()` is the seam for Sentry, PagerDuty or a Slack webhook — one
+place, no hard dependency. A throwing sink is swallowed: an alerting failure
+must never become an order-creation failure.
+
 ## Styling
 
 Tailwind v4 with tokens defined in `src/app/globals.css` under `@theme inline`.

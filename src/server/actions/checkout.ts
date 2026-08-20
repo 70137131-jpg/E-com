@@ -7,6 +7,7 @@ import type { PaymentMetadata } from '@/lib/payments/provider';
 import { checkoutSchema, fieldErrors } from '@/lib/validation/address';
 import { isShippingMethodKey, type ShippingMethodKey } from '@/lib/shipping';
 import { readCartToken } from '../cart-cookie';
+import { log } from '@/lib/log';
 
 export type CheckoutError = { field?: string; lineId?: string; message: string };
 
@@ -77,7 +78,7 @@ export async function preparePayment(input: {
           : [{ message: err.message }],
       };
     }
-    console.error('[checkout] preparePayment failed', err);
+    log.error('checkout.prepare_payment_failed', { err });
     return { ok: false, errors: [{ message: 'Something went wrong. Please try again.' }] };
   }
 }
