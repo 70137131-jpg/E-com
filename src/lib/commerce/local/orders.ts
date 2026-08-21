@@ -1,6 +1,7 @@
 import { and, count, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { cartItems, carts, orderItems, orders, products, variants } from '@/lib/db/schema';
+import { TIME_ZONE } from '@/lib/dates';
 import { shippingCostCents, type ShippingMethodKey } from '@/lib/shipping';
 import type {
   CreateOrderInput,
@@ -348,15 +349,24 @@ export async function updateOrderStatus(id: string, status: OrderStatus): Promis
 }
 
 export async function getDashboardStats(): Promise<DashboardStats> {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 1);
+  /**
+   * "Today" is a Pakistan day, not a day on whatever clock the server happens
+   * to keep — Vercel runs functions in UTC, so deriving the window from the
+   * Node process would roll over at 5am Karachi time and drop the previous
+   * evening's orders. Postgres does the zone maths against `timestamptz`, so
+   * the boundary is correct wherever this runs. End is exclusive.
+   */
+  const dayStart = sql`date_trunc('day', now() AT TIME ZONE ${TIME_ZONE}) AT TIME ZONE ${TIME_ZONE}`;
 
   const todays = await db
     .select({ total: orders.totalCents, status: orders.status })
     .from(orders)
-    .where(and(gte(orders.createdAt, start), lte(orders.createdAt, end)));
+    .where(
+      and(
+        sql`${orders.createdAt} >= ${dayStart}`,
+        sql`${orders.createdAt} < ${dayStart} + interval '1 day'`,
+      ),
+    );
 
   const [{ value: awaiting }] = await db
     .select({ value: count() })

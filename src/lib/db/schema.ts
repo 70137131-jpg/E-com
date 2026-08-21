@@ -38,8 +38,8 @@ export const products = pgTable(
     optionTypes: jsonb('option_types').$type<string[]>().notNull().default([]),
     published: boolean('published').notNull().default(true),
     featured: boolean('featured').notNull().default(false),
-    createdAt: timestamp('created_at').notNull().defaultNow(),
-    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index('products_collection_idx').on(t.collection),
@@ -68,8 +68,8 @@ export const variants = pgTable(
 export const carts = pgTable('carts', {
   id: uuid('id').primaryKey().defaultRandom(),
   token: text('token').notNull().unique(),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const cartItems = pgTable(
@@ -107,8 +107,8 @@ export const orders = pgTable(
      * losing the fact that money moved.
      */
     stockConflict: boolean('stock_conflict').notNull().default(false),
-    createdAt: timestamp('created_at').notNull().defaultNow(),
-    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index('orders_status_idx').on(t.status),

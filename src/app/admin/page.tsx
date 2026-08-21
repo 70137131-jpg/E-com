@@ -3,6 +3,7 @@ import { StatCard } from '@/components/admin/StatCard';
 import { StatusBadge } from '@/components/admin/StatusBadge';
 import { Table, Td, Th } from '@/components/ui/table';
 import { commerce } from '@/lib/commerce';
+import { shortDate } from '@/lib/dates';
 import { formatMoney } from '@/lib/money';
 import { requireAdmin } from '@/server/admin-auth';
 
@@ -10,8 +11,6 @@ export const metadata = { title: 'Dashboard' };
 
 // Admin must never serve a cached view of the business.
 export const dynamic = 'force-dynamic';
-
-const dateFormat = new Intl.DateTimeFormat('en-PK', { day: 'numeric', month: 'short' });
 
 /** PRD 6.10. */
 export default async function AdminDashboardPage() {
@@ -74,7 +73,7 @@ export default async function AdminDashboardPage() {
                       <StatusBadge status={order.status} />
                     </Td>
                     <Td className="whitespace-nowrap text-muted-foreground">
-                      {dateFormat.format(order.createdAt)}
+                      {shortDate.format(order.createdAt)}
                     </Td>
                   </tr>
                 ))}

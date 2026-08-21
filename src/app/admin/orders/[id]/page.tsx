@@ -7,19 +7,12 @@ import { StatusBadge } from '@/components/admin/StatusBadge';
 import { Alert } from '@/components/ui/alert';
 import { Table, Td, Th } from '@/components/ui/table';
 import { commerce } from '@/lib/commerce';
+import { longDateTime } from '@/lib/dates';
 import { formatMoney } from '@/lib/money';
 import { SHIPPING_METHODS } from '@/lib/shipping';
 import { requireAdmin } from '@/server/admin-auth';
 
 export const dynamic = 'force-dynamic';
-
-const dateFormat = new Intl.DateTimeFormat('en-PK', {
-  day: 'numeric',
-  month: 'long',
-  year: 'numeric',
-  hour: 'numeric',
-  minute: '2-digit',
-});
 
 export async function generateMetadata(props: PageProps<'/admin/orders/[id]'>) {
   const { id } = await props.params;
@@ -51,7 +44,7 @@ export default async function AdminOrderDetailPage(props: PageProps<'/admin/orde
       <div className="mt-4 flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-h1">Order {order.orderNumber}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{dateFormat.format(order.createdAt)}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{longDateTime.format(order.createdAt)}</p>
         </div>
         <StatusBadge status={order.status} />
       </div>

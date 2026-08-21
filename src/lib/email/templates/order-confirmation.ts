@@ -1,3 +1,4 @@
+import { longDate } from '@/lib/dates';
 import { formatMoney } from '@/lib/money';
 import { SHIPPING_METHODS } from '@/lib/shipping';
 import type { Order } from '@/lib/commerce/types';
@@ -27,11 +28,7 @@ export function orderConfirmationSubject(order: Order): string {
 
 export function orderConfirmationHtml(order: Order): string {
   const firstName = order.shippingAddress.name.split(' ')[0] || 'there';
-  const placed = order.createdAt.toLocaleDateString('en-PK', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
+  const placed = longDate.format(order.createdAt);
   const method = SHIPPING_METHODS[order.shippingMethod];
   const addr = order.shippingAddress;
 

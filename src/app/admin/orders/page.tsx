@@ -2,18 +2,13 @@ import Link from 'next/link';
 import { StatusBadge } from '@/components/admin/StatusBadge';
 import { Table, Td, Th } from '@/components/ui/table';
 import { commerce, ORDER_STATUSES, isOrderStatus } from '@/lib/commerce';
+import { mediumDate } from '@/lib/dates';
 import { formatMoney } from '@/lib/money';
 import { cn } from '@/lib/utils';
 import { requireAdmin } from '@/server/admin-auth';
 
 export const metadata = { title: 'Orders' };
 export const dynamic = 'force-dynamic';
-
-const dateFormat = new Intl.DateTimeFormat('en-PK', {
-  day: 'numeric',
-  month: 'short',
-  year: 'numeric',
-});
 
 const TABS = ['all', ...ORDER_STATUSES] as const;
 
@@ -91,7 +86,7 @@ export default async function AdminOrdersPage(props: PageProps<'/admin/orders'>)
                     </Link>
                   </Td>
                   <Td className="whitespace-nowrap text-muted-foreground">
-                    {dateFormat.format(order.createdAt)}
+                    {mediumDate.format(order.createdAt)}
                   </Td>
                   <Td className="max-w-[18ch] truncate">{order.shippingAddress.name}</Td>
                   <Td className="hidden max-w-[24ch] truncate text-muted-foreground sm:table-cell">

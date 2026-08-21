@@ -27,7 +27,9 @@ Two consequences worth internalising:
 npm run dev              # dev server (prefer the Browser pane / launch.json over bare bash)
 npm run typecheck        # tsc --noEmit — the only automated check in the repo
 npm run build
-npm run db:push          # apply schema.ts to Neon (no migration files yet)
+npm run db:generate      # write a migration from schema.ts changes
+npm run db:migrate       # apply pending migrations (the path for any DB with data)
+npm run db:push          # shove schema.ts straight at the DB; throwaway/local only
 npm run db:seed          # truncate + reseed catalogue and order history; idempotent
 npm run images:generate  # regenerate public/products/*.webp from catalog-data.ts
 ```
@@ -64,6 +66,13 @@ that way when touching either gateway.
 
 - **Money is integer paisa. No floats, anywhere.** `src/lib/money.ts` is the only
   place minor units become a string. `450000` is Rs 4,500.
+- **Timestamps are `timestamptz`, and dates are Karachi dates.** `src/lib/dates.ts`
+  is the only place an instant becomes a string, and every formatter there pins
+  `timeZone: 'Asia/Karachi'` — Vercel runs functions in UTC, so an unpinned
+  formatter shows a Karachi admin the wrong day for five hours out of every
+  twenty-four. Never add a bare `Intl.DateTimeFormat` or `toLocaleDateString`.
+  Day-boundary queries do the zone maths in SQL (see `getDashboardStats`), never
+  from the Node process clock.
 - **The server recalculates every number.** The client submits variant IDs,
   quantities, an address and a shipping *key* — never a price, subtotal, shipping
   cost or total. `priceCart()` in `local/orders.ts` is the authority, and it runs
