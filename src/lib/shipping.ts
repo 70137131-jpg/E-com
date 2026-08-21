@@ -26,7 +26,11 @@ export type ShippingMethodKey = keyof typeof SHIPPING_METHODS;
 export const SHIPPING_METHOD_KEYS = Object.keys(SHIPPING_METHODS) as ShippingMethodKey[];
 
 export function isShippingMethodKey(value: string): value is ShippingMethodKey {
-  return value in SHIPPING_METHODS;
+  // Not `value in SHIPPING_METHODS`: `in` walks the prototype chain, so
+  // '__proto__', 'constructor' and 'toString' all passed as valid keys. The
+  // lookup that follows then returns an Object.prototype member whose
+  // .priceCents is undefined, turning the order total into NaN.
+  return Object.prototype.hasOwnProperty.call(SHIPPING_METHODS, value);
 }
 
 /** Free standard shipping over PKR 5,000 (§12.3). */

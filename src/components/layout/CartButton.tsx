@@ -10,7 +10,7 @@ export function CartButton() {
   return (
     <button
       type="button"
-      onClick={openCart}
+      onClick={(event) => openCart(event.currentTarget)}
       className="tap-target relative inline-flex items-center justify-center rounded-[var(--radius)] hover:bg-muted"
       aria-label={count === 1 ? 'Open cart, 1 item' : `Open cart, ${count} items`}
     >

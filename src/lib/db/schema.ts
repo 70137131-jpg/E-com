@@ -137,3 +137,40 @@ export const orderItems = pgTable(
   },
   (t) => [index('order_items_order_idx').on(t.orderId)],
 );
+
+/**
+ * Admin audit trail.
+ *
+ * Answers "who changed this price, and when" — currently unanswerable, because
+ * every catalogue and order mutation is anonymous once it has happened.
+ *
+ * **Attribution is as good as the auth allows.** /admin is one shared password,
+ * so `actor` is the constant 'admin' and `actorIp` is the only distinguishing
+ * detail. Per-person attribution needs per-user accounts, which is Phase 2
+ * (PRD §17.5). Recording it now still gives an ordered, queryable history of
+ * what changed, which is most of the value.
+ *
+ * Rows are append-only. Nothing in the app updates or deletes them.
+ */
+export const auditLog = pgTable(
+  'audit_log',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** Stable machine key, e.g. 'order.status_changed'. */
+    action: text('action').notNull(),
+    /** 'order' | 'variant' | 'product' — what kind of thing changed. */
+    entityType: text('entity_type').notNull(),
+    entityId: uuid('entity_id').notNull(),
+    /** Human-facing identifier captured at the time: order number, SKU, title. */
+    entityLabel: text('entity_label'),
+    actor: text('actor').notNull().default('admin'),
+    actorIp: text('actor_ip'),
+    /** { field: { from, to } }. Money stays in integer minor units. */
+    changes: jsonb('changes').$type<Record<string, { from: unknown; to: unknown }>>(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('audit_log_created_idx').on(t.createdAt),
+    index('audit_log_entity_idx').on(t.entityType, t.entityId),
+  ],
+);

@@ -18,7 +18,7 @@ export function Breadcrumbs({ trail }: { trail: Crumb[] }) {
                 </span>
               ) : (
                 <>
-                  <Link href={crumb.href} className="hover:text-foreground">
+                  <Link href={crumb.href} className="tap-link hover:text-foreground">
                     {crumb.label}
                   </Link>
                   <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />

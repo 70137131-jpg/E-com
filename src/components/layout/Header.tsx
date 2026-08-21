@@ -19,7 +19,7 @@ export function Header() {
 
         <Link
           href="/"
-          className="mr-auto text-base font-medium tracking-[0.14em] uppercase lg:mr-0"
+          className="tap-link mr-auto text-base font-medium tracking-[0.14em] uppercase lg:mr-0"
         >
           {BRAND.name}
         </Link>

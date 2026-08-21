@@ -35,7 +35,9 @@ export default async function AdminOrdersPage(props: PageProps<'/admin/orders'>)
   const { status } = await props.searchParams;
   const active = typeof status === 'string' && isOrderStatus(status) ? status : 'all';
 
-  const orders = await commerce.listOrders(active === 'all' ? {} : { status: active });
+  const orders = await commerce.listOrders(
+    active === 'all' ? { withItems: false } : { status: active, withItems: false },
+  );
 
   return (
     <div className="container-page section">

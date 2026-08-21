@@ -1,6 +1,7 @@
 import { and, count, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { cartItems, carts, orderItems, orders, products, variants } from '@/lib/db/schema';
+import { canTransition } from '@/lib/order-status';
 import { shippingCostCents, type ShippingMethodKey } from '@/lib/shipping';
 import type {
   CreateOrderInput,
@@ -9,6 +10,8 @@ import type {
   Order,
   OrderItem,
   OrderStatus,
+  ProductBefore,
+  VariantBefore,
 } from '../types';
 import { StockError } from '../types';
 
@@ -313,7 +316,7 @@ export async function getOrderByPaymentIntent(pi: string): Promise<Order | null>
 }
 
 export async function listOrders(
-  opts: { status?: OrderStatus; limit?: number } = {},
+  opts: { status?: OrderStatus; limit?: number; withItems?: boolean } = {},
 ): Promise<Order[]> {
   const rows = await db
     .select()
@@ -321,23 +324,22 @@ export async function listOrders(
     .where(opts.status ? eq(orders.status, opts.status) : undefined)
     .orderBy(desc(orders.createdAt))
     .limit(opts.limit ?? 200);
+
+  // List views render number, customer, total and status — never line items.
+  // Loading order_items for every row is a second query over hundreds of rows
+  // whose result is then thrown away, so it is opt-in.
+  if (opts.withItems === false) return rows.map((row) => toOrder(row, []));
+
   return withItems(rows);
 }
 
 /** PRD 12.5 - the only legal transitions. Enforced here, not just in the UI. */
-const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
-  pending: ['cancelled'],
-  paid: ['fulfilled', 'cancelled'],
-  fulfilled: [],
-  cancelled: [],
-};
-
 export async function updateOrderStatus(id: string, status: OrderStatus): Promise<Order> {
   const [row] = await db.select().from(orders).where(eq(orders.id, id)).limit(1);
   if (!row) throw new Error('Order not found');
 
   const from = row.status as OrderStatus;
-  if (!ALLOWED_TRANSITIONS[from].includes(status)) {
+  if (!canTransition(from, status)) {
     throw new Error(`Cannot move an order from ${from} to ${status}.`);
   }
 
@@ -353,15 +355,17 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   const end = new Date(start);
   end.setDate(end.getDate() + 1);
 
-  const todays = await db
-    .select({ total: orders.totalCents, status: orders.status })
-    .from(orders)
-    .where(and(gte(orders.createdAt, start), lte(orders.createdAt, end)));
-
-  const [{ value: awaiting }] = await db
-    .select({ value: count() })
-    .from(orders)
-    .where(eq(orders.status, 'paid'));
+  // Independent queries: one round trip's latency instead of two.
+  const [todays, [{ value: awaiting }]] = await Promise.all([
+    db
+      .select({ total: orders.totalCents, status: orders.status })
+      .from(orders)
+      .where(and(gte(orders.createdAt, start), lte(orders.createdAt, end))),
+    db
+      .select({ value: count() })
+      .from(orders)
+      .where(eq(orders.status, 'paid')),
+  ]);
 
   const billable = todays.filter((o) => o.status !== 'cancelled');
 
@@ -386,20 +390,46 @@ export async function getLowStock(threshold = 3): Promise<LowStockRow[]> {
     .orderBy(variants.stock);
 }
 
+/**
+ * Returns the row as it was *before* the patch, so the caller can record an
+ * audit entry without a second round trip or a getter on the interface. Null
+ * when nothing changed or the variant does not exist.
+ */
 export async function updateVariant(
   variantId: string,
   patch: { priceCents?: number; stock?: number },
-): Promise<void> {
+): Promise<VariantBefore | null> {
   const set: Partial<typeof variants.$inferInsert> = {};
   if (patch.priceCents !== undefined) set.priceCents = patch.priceCents;
   if (patch.stock !== undefined) set.stock = patch.stock;
-  if (Object.keys(set).length === 0) return;
+  if (Object.keys(set).length === 0) return null;
+
+  const [before] = await db
+    .select({ sku: variants.sku, priceCents: variants.priceCents, stock: variants.stock })
+    .from(variants)
+    .where(eq(variants.id, variantId))
+    .limit(1);
+  if (!before) return null;
+
   await db.update(variants).set(set).where(eq(variants.id, variantId));
+  return before;
 }
 
-export async function setProductPublished(productId: string, published: boolean): Promise<void> {
+/** Same contract as updateVariant: the state before the change, or null. */
+export async function setProductPublished(
+  productId: string,
+  published: boolean,
+): Promise<ProductBefore | null> {
+  const [before] = await db
+    .select({ title: products.title, published: products.published })
+    .from(products)
+    .where(eq(products.id, productId))
+    .limit(1);
+  if (!before) return null;
+
   await db
     .update(products)
     .set({ published, updatedAt: new Date() })
     .where(eq(products.id, productId));
+  return before;
 }

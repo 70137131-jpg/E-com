@@ -4,7 +4,7 @@ import { Breadcrumbs, breadcrumbJsonLd, type Crumb } from '@/components/layout/B
 import { EmptyState } from '@/components/ui/empty-state';
 import { ProductGrid } from '@/components/product/ProductCard';
 import { SortSelect } from '@/components/product/SortSelect';
-import { commerce, COLLECTION_DEFS, isSortKey } from '@/lib/commerce';
+import { commerce, COLLECTION_DEFS, collectionDef, isSortKey } from '@/lib/commerce';
 
 export const revalidate = 60;
 
@@ -14,7 +14,7 @@ export function generateStaticParams() {
 
 export async function generateMetadata(props: PageProps<'/collections/[slug]'>): Promise<Metadata> {
   const { slug } = await props.params;
-  const collection = await commerce.getCollection(slug);
+  const collection = collectionDef(slug);
   if (!collection) return { title: 'Not found' };
 
   return {
@@ -33,7 +33,9 @@ export default async function CollectionPage(props: PageProps<'/collections/[slu
   const { slug } = await props.params;
   const { sort } = await props.searchParams;
 
-  const collection = await commerce.getCollection(slug);
+  // Title and description are static copy and the result count comes from the
+  // products below, so the collection itself costs no database round trip.
+  const collection = collectionDef(slug);
   if (!collection) notFound();
 
   // A repeated search param arrives as an array; only a single string can be a sort key.

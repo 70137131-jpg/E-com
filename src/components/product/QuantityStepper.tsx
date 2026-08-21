@@ -11,6 +11,7 @@ export function QuantityStepper({
   disabled,
   label = 'Quantity',
   className,
+  allowServerClamp = false,
 }: {
   value: number;
   onChange: (next: number) => void;
@@ -19,9 +20,17 @@ export function QuantityStepper({
   disabled?: boolean;
   label?: string;
   className?: string;
+  /**
+   * Keep the increase button live at the ceiling so one step past `max` reaches
+   * the server, which clamps and returns a notice. PRD 6.4 requires the cart to
+   * auto-clamp rather than reject, and `max` here is only the stock the client
+   * last heard about — it is stale the moment someone else buys the last one.
+   * Bounded in practice: the server clamps the value straight back to `max`.
+   */
+  allowServerClamp?: boolean;
 }) {
   const canDecrease = !disabled && value > min;
-  const canIncrease = !disabled && value < max;
+  const canIncrease = !disabled && (value < max || allowServerClamp);
 
   return (
     <div

@@ -22,7 +22,7 @@ export function ProductPurchase({ product }: { product: Product }) {
     if (product.optionTypes.length === 0) return {};
     return {};
   });
-  const [quantity, setQuantity] = React.useState(1);
+  const [requestedQuantity, setRequestedQuantity] = React.useState(1);
 
   const variant =
     product.optionTypes.length === 0
@@ -32,9 +32,13 @@ export function ProductPurchase({ product }: { product: Product }) {
   const hasSelection = product.optionTypes.every((t) => Boolean(selection[t]));
 
   // Never carry a quantity above what the newly chosen variant can supply.
-  React.useEffect(() => {
-    if (variant && quantity > variant.stock) setQuantity(Math.max(1, variant.stock));
-  }, [variant, quantity]);
+  // Derived during render rather than corrected in an effect: switching variants
+  // used to set state from inside useEffect, which renders once with the stale
+  // quantity and again with the clamped one. Nothing reads the unclamped value,
+  // so there is no reason to store it.
+  const quantity = variant
+    ? Math.min(requestedQuantity, Math.max(1, variant.stock))
+    : requestedQuantity;
 
   function select(type: string, value: string) {
     setSelection((prev) => ({ ...prev, [type]: prev[type] === value ? undefined : value }));
@@ -90,7 +94,7 @@ export function ProductPurchase({ product }: { product: Product }) {
       <div className="flex items-center gap-4">
         <QuantityStepper
           value={quantity}
-          onChange={setQuantity}
+          onChange={setRequestedQuantity}
           max={Math.max(variant?.stock ?? 1, 1)}
           disabled={!variant || variant.stock <= 0}
         />
@@ -103,7 +107,10 @@ export function ProductPurchase({ product }: { product: Product }) {
 
       <p className="text-sm text-muted-foreground">
         Free standard delivery over Rs 5,000.{' '}
-        <Link href="/shipping-returns" className="underline underline-offset-2 hover:text-foreground">
+        <Link
+          href="/shipping-returns"
+          className="tap-link underline underline-offset-2 hover:text-foreground"
+        >
           Shipping &amp; Returns
         </Link>
       </p>

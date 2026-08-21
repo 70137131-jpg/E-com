@@ -14,6 +14,7 @@ import {
 } from '@/lib/shipping';
 import { preparePayment } from '@/server/actions/checkout';
 import { AddressForm, type AddressFields } from './AddressForm';
+import { CheckoutSkeleton } from './CheckoutSkeleton';
 import { MockPayment } from './MockPayment';
 import { OrderSummary } from './OrderSummary';
 import { ShippingMethodPicker } from './ShippingMethodPicker';
@@ -39,7 +40,7 @@ export function CheckoutForm({
   publishableKey: string | null;
 }) {
   const router = useRouter();
-  const { cart, setCart } = useCart();
+  const { cart, loading, setCart } = useCart();
 
   const [values, setValues] = React.useState<AddressFields>(EMPTY_FORM);
   const [errors, setErrors] = React.useState<Record<string, string>>({});
@@ -61,10 +62,17 @@ export function CheckoutForm({
       : SHIPPING_METHODS[shippingMethod].priceCents;
   const totalCents = subtotalCents + shippingCents;
 
-  // An empty cart has nothing to check out (PRD 6.5 states).
+  // An empty cart has nothing to check out (PRD 6.5 states). `cart` is null both
+  // while loading and when the shopper has no cart cookie at all — the second
+  // case is the common one (fresh visitor, or straight after an order clears the
+  // cookie), so the guard has to wait for `loading` rather than for a truthy cart.
   React.useEffect(() => {
-    if (cart && cart.lines.length === 0) router.replace('/cart');
-  }, [cart, router]);
+    if (!loading && (!cart || cart.lines.length === 0)) router.replace('/cart');
+  }, [cart, loading, router]);
+
+  // The totals below come from the client-loaded cart; rendering before it
+  // arrives would flash an empty summary and a "Pay Rs 0" button.
+  if (loading) return <CheckoutSkeleton />;
 
   function setField(field: keyof AddressFields, value: string) {
     setValues((prev) => ({ ...prev, [field]: value }));
@@ -199,12 +207,19 @@ export function CheckoutForm({
               )}
             </div>
 
-            {/* PRD 9.4 - so the client can buy something unassisted. */}
-            <p className="mt-4 rounded-[var(--radius)] bg-muted px-4 py-3 text-sm text-muted-foreground">
-              <strong className="font-medium text-foreground">Demo store</strong> — use card{' '}
-              <span className="tabular">4242 4242 4242 4242</span>, any future expiry, any CVC, any
-              postal code. No real payment is taken.
-            </p>
+            {/*
+              PRD 9.4 - so the client can buy something unassisted. Tied to the
+              mock gateway on purpose: with live Stripe keys this would tell real
+              shoppers to pay with a test card and promise that no payment is
+              taken, on a form that charges them.
+            */}
+            {mode === 'mock' ? (
+              <p className="mt-4 rounded-[var(--radius)] bg-muted px-4 py-3 text-sm text-muted-foreground">
+                <strong className="font-medium text-foreground">Demo store</strong> — use card{' '}
+                <span className="tabular">4242 4242 4242 4242</span>, any future expiry, any CVC, any
+                postal code. No real payment is taken.
+              </p>
+            ) : null}
           </section>
 
           <Button type="submit" size="lg" full loading={processing}>

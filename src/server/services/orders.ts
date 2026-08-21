@@ -1,6 +1,7 @@
 import 'server-only';
 import { commerce, type Order } from '@/lib/commerce';
 import { sendOrderConfirmation } from '@/lib/email/resend';
+import { ALERT_EVENTS, log } from '@/lib/log';
 import type { PaymentMetadata } from '@/lib/payments/provider';
 
 /**
@@ -13,7 +14,7 @@ export async function fulfilPayment(
   paymentIntentId: string,
   metadata: PaymentMetadata,
 ): Promise<Order> {
-  console.info(`[payment] succeeded pi=${paymentIntentId} cart=${metadata.cartToken}`);
+  log.info('payment.succeeded', { paymentIntentId, cartToken: metadata.cartToken });
 
   const order = await commerce.createOrder({
     cartToken: metadata.cartToken,
@@ -23,10 +24,24 @@ export async function fulfilPayment(
     paymentIntentId,
   });
 
-  console.info(
-    `[order] created ${order.orderNumber} status=${order.status} total=${order.totalCents}` +
-      (order.stockConflict ? ' STOCK_CONFLICT' : ''),
-  );
+  log.info('order.created', {
+    orderNumber: order.orderNumber,
+    status: order.status,
+    totalCents: order.totalCents,
+    stockConflict: order.stockConflict,
+  });
+
+  if (order.stockConflict) {
+    // The shopper has been charged for something the shop may not have. Someone
+    // has to reconcile it by hand, and until they do the order sits `pending`
+    // where it is easy to miss (PRD 13.4).
+    log.alert(ALERT_EVENTS.ORDER_STOCK_CONFLICT, {
+      orderNumber: order.orderNumber,
+      paymentIntentId,
+      totalCents: order.totalCents,
+      email: order.email,
+    });
+  }
 
   // Outside the transaction on purpose - a mail failure must not roll back a
   // paid order (PRD 13.2 step 11).

@@ -1,4 +1,5 @@
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { unstable_cache } from 'next/cache';
+import { and, asc, count, eq, inArray } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { products, variants } from '@/lib/db/schema';
 import type { Collection, Product, SortKey, Variant } from '../types';
@@ -68,14 +69,7 @@ function sortProducts(list: Product[], sort: SortKey): Product[] {
   }
 }
 
-async function loadProducts(rows: ProductRow[]): Promise<Product[]> {
-  if (rows.length === 0) return [];
-  const variantRows = await db
-    .select()
-    .from(variants)
-    .where(inArray(variants.productId, rows.map((r) => r.id)))
-    .orderBy(asc(variants.position));
-
+function groupVariants(rows: ProductRow[], variantRows: VariantRow[]): Product[] {
   const byProduct = new Map<string, VariantRow[]>();
   for (const v of variantRows) {
     const list = byProduct.get(v.productId);
@@ -85,7 +79,18 @@ async function loadProducts(rows: ProductRow[]): Promise<Product[]> {
   return rows.map((r) => toProduct(r, byProduct.get(r.id) ?? []));
 }
 
-export async function getProducts(opts: {
+async function loadProducts(rows: ProductRow[]): Promise<Product[]> {
+  if (rows.length === 0) return [];
+  const variantRows = await db
+    .select()
+    .from(variants)
+    .where(inArray(variants.productId, rows.map((r) => r.id)))
+    .orderBy(asc(variants.position));
+
+  return groupVariants(rows, variantRows);
+}
+
+async function getProductsUncached(opts: {
   collection?: string;
   sort?: SortKey;
   limit?: number;
@@ -97,16 +102,33 @@ export async function getProducts(opts: {
   if (opts.collection) filters.push(eq(products.collection, opts.collection));
   if (opts.featured) filters.push(eq(products.featured, true));
 
-  const rows = await db
+  const productQuery = db
     .select()
     .from(products)
     .where(filters.length ? and(...filters) : undefined);
 
+  // Loading variants normally needs the product ids first, forcing two
+  // sequential round trips. When nothing narrows the product set we are going to
+  // want every variant anyway, so both queries can go out at once — this is the
+  // admin catalogue path, which deliberately bypasses the cache.
+  const wantsEveryProduct = !opts.collection && !opts.featured;
+
+  if (wantsEveryProduct) {
+    const [rows, variantRows] = await Promise.all([
+      productQuery,
+      db.select().from(variants).orderBy(asc(variants.position)),
+    ]);
+    const assembled = groupVariants(rows, variantRows);
+    const sorted = sortProducts(assembled, opts.sort ?? 'featured');
+    return opts.limit ? sorted.slice(0, opts.limit) : sorted;
+  }
+
+  const rows = await productQuery;
   const sorted = sortProducts(await loadProducts(rows), opts.sort ?? 'featured');
   return opts.limit ? sorted.slice(0, opts.limit) : sorted;
 }
 
-export async function getProduct(
+async function getProductUncached(
   slug: string,
   opts: { includeUnpublished?: boolean } = {},
 ): Promise<Product | null> {
@@ -140,6 +162,71 @@ export async function getCollections(): Promise<Collection[]> {
 export async function getCollection(slug: string): Promise<Collection | null> {
   const def = collectionDef(slug);
   if (!def) return null;
-  const all = await getCollections();
-  return all.find((c) => c.slug === slug) ?? null;
+
+  // Count only this collection. The previous implementation called
+  // getCollections(), which scans every published product to build counts for
+  // all three and then discards two of them.
+  const [row] = await db
+    .select({ value: count() })
+    .from(products)
+    .where(and(eq(products.collection, slug), eq(products.published, true)));
+
+  return { ...def, productCount: row?.value ?? 0 };
+}
+
+/**
+ * Catalogue caching.
+ *
+ * The catalogue changes only when an admin edits it, so reads are cached and
+ * tagged rather than hitting Postgres on every request. Admin mutations call
+ * revalidateTag(CATALOGUE_TAG), which is what keeps PRD 6.12 ("live within 60
+ * seconds") honest while making the common case a cache hit.
+ *
+ * Two rules:
+ *  - includeUnpublished bypasses the cache entirely. That flag is only ever set
+ *    by admin screens, which must never read a stale or shared catalogue.
+ *  - Dates are revived on the way out. The cache serialises values, so a Date
+ *    comes back as a string and `createdAt` would quietly stop being a Date.
+ */
+export const CATALOGUE_TAG = 'catalogue';
+
+const CACHE_OPTIONS = { revalidate: 60, tags: [CATALOGUE_TAG] };
+
+function reviveProduct(product: Product): Product {
+  return { ...product, createdAt: new Date(product.createdAt) };
+}
+
+export async function getProducts(
+  opts: {
+    collection?: string;
+    sort?: SortKey;
+    limit?: number;
+    featured?: boolean;
+    includeUnpublished?: boolean;
+  } = {},
+): Promise<Product[]> {
+  if (opts.includeUnpublished) return getProductsUncached(opts);
+
+  const cached = await unstable_cache(
+    () => getProductsUncached(opts),
+    ['catalog:getProducts', JSON.stringify(opts)],
+    CACHE_OPTIONS,
+  )();
+
+  return cached.map(reviveProduct);
+}
+
+export async function getProduct(
+  slug: string,
+  opts: { includeUnpublished?: boolean } = {},
+): Promise<Product | null> {
+  if (opts.includeUnpublished) return getProductUncached(slug, opts);
+
+  const cached = await unstable_cache(
+    () => getProductUncached(slug, opts),
+    ['catalog:getProduct', slug],
+    CACHE_OPTIONS,
+  )();
+
+  return cached ? reviveProduct(cached) : null;
 }

@@ -18,7 +18,7 @@ export function Footer() {
               <li key={c.slug}>
                 <Link
                   href={`/collections/${c.slug}`}
-                  className="text-sm text-muted-foreground hover:text-foreground"
+                  className="tap-link text-sm text-muted-foreground hover:text-foreground"
                 >
                   {c.title}
                 </Link>
@@ -31,20 +31,20 @@ export function Footer() {
           <h2 className="text-sm font-medium">Information</h2>
           <ul className="mt-3 space-y-2">
             <li>
-              <Link href="/about" className="text-sm text-muted-foreground hover:text-foreground">
+              <Link href="/about" className="tap-link text-sm text-muted-foreground hover:text-foreground">
                 About
               </Link>
             </li>
             <li>
               <Link
                 href="/shipping-returns"
-                className="text-sm text-muted-foreground hover:text-foreground"
+                className="tap-link text-sm text-muted-foreground hover:text-foreground"
               >
                 Shipping &amp; Returns
               </Link>
             </li>
             <li>
-              <Link href="/contact" className="text-sm text-muted-foreground hover:text-foreground">
+              <Link href="/contact" className="tap-link text-sm text-muted-foreground hover:text-foreground">
                 Contact
               </Link>
             </li>

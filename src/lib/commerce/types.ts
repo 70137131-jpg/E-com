@@ -141,6 +141,10 @@ export type DashboardStats = {
   awaitingFulfilment: number;
 };
 
+/** Pre-change snapshots returned by the admin mutations (see audit.ts). */
+export type VariantBefore = { sku: string; priceCents: number; stock: number };
+export type ProductBefore = { title: string; published: boolean };
+
 export interface CommerceProvider {
   getCollections(): Promise<Collection[]>;
   getCollection(slug: string): Promise<Collection | null>;
@@ -162,14 +166,18 @@ export interface CommerceProvider {
   createOrder(input: CreateOrderInput): Promise<Order>;
   getOrder(id: string): Promise<Order | null>;
   getOrderByPaymentIntent(pi: string): Promise<Order | null>;
-  listOrders(opts?: { status?: OrderStatus; limit?: number }): Promise<Order[]>;
+  listOrders(opts?: { status?: OrderStatus; limit?: number; withItems?: boolean }): Promise<Order[]>;
   updateOrderStatus(id: string, status: OrderStatus): Promise<Order>;
 
   // Admin surfaces
   getDashboardStats(): Promise<DashboardStats>;
   getLowStock(threshold?: number): Promise<LowStockRow[]>;
-  updateVariant(variantId: string, patch: { priceCents?: number; stock?: number }): Promise<void>;
-  setProductPublished(productId: string, published: boolean): Promise<void>;
+  /** Both return the row as it was before the change, for the audit trail. */
+  updateVariant(
+    variantId: string,
+    patch: { priceCents?: number; stock?: number },
+  ): Promise<VariantBefore | null>;
+  setProductPublished(productId: string, published: boolean): Promise<ProductBefore | null>;
 }
 
 /** Thrown by the provider when a cart line can no longer be honoured (§13.2 step 3). */

@@ -1,13 +1,16 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, updateTag } from 'next/cache';
 import { commerce, isOrderStatus } from '@/lib/commerce';
+import { CATALOGUE_TAG } from '@/lib/commerce/local/catalog';
 import {
   setPublishedSchema,
   updateOrderStatusSchema,
   updateVariantSchema,
 } from '@/lib/validation/admin';
 import { assertAdmin } from '../admin-auth';
+import { recordAudit } from '../services/audit';
+import { log } from '@/lib/log';
 
 export type ActionResult = { ok: boolean; message?: string };
 
@@ -29,13 +32,23 @@ export async function updateOrderStatus(input: {
   if (!parsed.success) return { ok: false, message: 'Something went wrong. Please try again.' };
 
   try {
+    const before = await commerce.getOrder(parsed.data.orderId);
     const order = await commerce.updateOrderStatus(parsed.data.orderId, parsed.data.status);
+
+    await recordAudit({
+      action: 'order.status_changed',
+      entityType: 'order',
+      entityId: order.id,
+      entityLabel: order.orderNumber,
+      changes: { status: { from: before?.status ?? null, to: order.status } },
+    });
+
     revalidatePath('/admin');
     revalidatePath('/admin/orders');
     revalidatePath(`/admin/orders/${parsed.data.orderId}`);
     return { ok: true, message: `Order ${order.orderNumber} is now ${order.status}.` };
   } catch (err) {
-    console.error('[admin] updateOrderStatus failed', err);
+    log.error('admin.update_order_status_failed', { err });
     return {
       ok: false,
       message: err instanceof Error ? err.message : 'Something went wrong. Please try again.',
@@ -63,14 +76,36 @@ export async function updateVariant(input: {
   if (!parsed.success) return { ok: false, message: 'Enter a whole number.' };
 
   try {
-    await commerce.updateVariant(parsed.data.variantId, {
+    const before = await commerce.updateVariant(parsed.data.variantId, {
       priceCents: parsed.data.priceCents,
       stock: parsed.data.stock,
     });
+
+    // Price and stock are separate actions: an operator looking for "who
+    // discounted this" should not have to read through stock corrections.
+    if (before && parsed.data.priceCents !== undefined && parsed.data.priceCents !== before.priceCents) {
+      await recordAudit({
+        action: 'variant.price_changed',
+        entityType: 'variant',
+        entityId: parsed.data.variantId,
+        entityLabel: before.sku,
+        changes: { priceCents: { from: before.priceCents, to: parsed.data.priceCents } },
+      });
+    }
+    if (before && parsed.data.stock !== undefined && parsed.data.stock !== before.stock) {
+      await recordAudit({
+        action: 'variant.stock_changed',
+        entityType: 'variant',
+        entityId: parsed.data.variantId,
+        entityLabel: before.sku,
+        changes: { stock: { from: before.stock, to: parsed.data.stock } },
+      });
+    }
+
     revalidateCatalogue();
     return { ok: true };
   } catch (err) {
-    console.error('[admin] updateVariant failed', err);
+    log.error('admin.update_variant_failed', { err });
     return { ok: false, message: 'Something went wrong. Please try again.' };
   }
 }
@@ -85,11 +120,25 @@ export async function setProductPublished(input: {
   if (!parsed.success) return { ok: false, message: 'Something went wrong. Please try again.' };
 
   try {
-    await commerce.setProductPublished(parsed.data.productId, parsed.data.published);
+    const before = await commerce.setProductPublished(
+      parsed.data.productId,
+      parsed.data.published,
+    );
+
+    if (before && before.published !== parsed.data.published) {
+      await recordAudit({
+        action: 'product.published_changed',
+        entityType: 'product',
+        entityId: parsed.data.productId,
+        entityLabel: before.title,
+        changes: { published: { from: before.published, to: parsed.data.published } },
+      });
+    }
+
     revalidateCatalogue();
     return { ok: true };
   } catch (err) {
-    console.error('[admin] setProductPublished failed', err);
+    log.error('admin.set_published_failed', { err });
     return { ok: false, message: 'Something went wrong. Please try again.' };
   }
 }
@@ -104,6 +153,13 @@ export async function setProductPublished(input: {
  * /products/[slug] page serving an unpublished product.
  */
 function revalidateCatalogue() {
+  // Catalogue reads are cached under this tag; without invalidating it the pages
+  // would re-render and read the same cached rows straight back.
+  //
+  // updateTag, not revalidateTag: this is a read-your-own-writes case. The
+  // operator must see the new price on the next request, and revalidateTag's
+  // recommended profile serves the stale value once before refreshing.
+  updateTag(CATALOGUE_TAG);
   revalidatePath('/(shop)', 'layout');
   revalidatePath('/(shop)/products/[slug]', 'page');
   revalidatePath('/(shop)/collections/[slug]', 'page');

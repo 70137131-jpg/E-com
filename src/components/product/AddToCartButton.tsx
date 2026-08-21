@@ -31,18 +31,27 @@ export function AddToCartButton({
         ? 'Out of stock'
         : 'Add to cart';
 
-  function submit() {
+  // `trigger` is captured synchronously in the click handler: by the time the
+  // transition below resolves, this button is disabled by `loading` and focus
+  // has already left it, so the drawer would have nothing to restore to.
+  function submit(trigger: HTMLElement | null) {
     if (!variant) return;
     startTransition(async () => {
       const result = await addToCart({ variantId: variant.id, quantity });
       setCart(result.cart);
       if (result.notice) toast.warning(result.notice);
-      openCart();
+      openCart(trigger);
     });
   }
 
   return (
-    <Button size="lg" full onClick={submit} disabled={disabled} loading={pending}>
+    <Button
+      size="lg"
+      full
+      onClick={(event) => submit(event.currentTarget)}
+      disabled={disabled}
+      loading={pending}
+    >
       {label}
     </Button>
   );
