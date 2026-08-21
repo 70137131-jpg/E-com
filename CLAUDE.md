@@ -33,7 +33,7 @@ npm run db:generate      # write a migration from schema.ts changes
 npm run db:migrate       # apply pending migrations (the deploy path)
 npm run db:push          # sync schema.ts straight to the DB — local scratch only
 npm run db:seed          # truncate + reseed catalogue and order history; idempotent
-npm run images:generate  # regenerate public/products/*.webp from catalog-data.ts
+npm run images:generate  # fallback: re-render vector artwork over the photography
 ```
 
 `npm run lint && npm run typecheck && npm test` is the gate; CI runs all three
@@ -227,10 +227,9 @@ Test at 320px. It is the width that breaks things.
 ## Data and images
 
 `src/lib/db/catalog-data.ts` is the single source of truth for both the seed script
-and the image generator — a product cannot exist without artwork. Images are
-*generated* studio-style vector artwork rendered to 1200×1200 WebP via sharp, not
-licensed photography; swapping in real photos means overwriting the files in
-`public/products/` and keeping the filenames from `productImages()`.
+and the image scripts — a product cannot exist without artwork. Images are 1200×1200
+WebP (the hero is 2400×1400) written to the filenames `productImages()` derives from
+the slug, so swapping any image is overwriting a file, never a database change.
 
 Seeded stock is deliberately uneven: some variants at 1–3 (shows "Only n left"),
 one at 0 (shows out of stock). Preserve that when editing seed data — it is what
@@ -435,13 +434,20 @@ while content loads. The slant is the gradient angle, exposed as
 
 ## Imagery
 
-Two sources, on purpose:
+**Every image in `public/products/` is a photograph** — hero, collection tiles and
+all two-to-three frames of every product — fetched and encoded by
+`scripts/fetch-photography.ts`, which is the source of truth for that directory.
 
-- **Primary product frame** — generated studio artwork (`scripts/generate-images.ts`).
-  Every product shares one silhouette style, background and shadow, which is what
-  makes the grid read as a catalogue rather than a scrapbook.
-- **Hero, collection tiles, and the last frame of each product** — real
-  photography from Unsplash (`scripts/fetch-photography.ts`).
+`scripts/generate-images.ts` still renders the original vector silhouettes and
+still writes the same filenames, so running `npm run images:generate` reverts the
+storefront to artwork. It is kept as the fallback for a catalogue change made
+without network access; re-run the photography script afterwards.
+
+`FRAMES` in the photography script is asserted exhaustive over `CATALOG` at
+startup — frame count must equal `imageCount`, no product may repeat a photograph
+within its own gallery, and **frame 1 must be unique across products** because it
+is the grid thumbnail and a repeat there reads as a broken catalogue. Add a
+product without adding its frames and the script refuses to run.
 
 ### Sourcing rules — do not relax these
 
@@ -454,9 +460,18 @@ Two sources, on purpose:
   labels and hangers ("ZARA", "BROOTZ", printed slogan tees). PRD 16 forbids
   competitor imagery.
 
-That combination rules out nearly all apparel photography on Unsplash. What
-survives is textiles, which is why photography is used for fabric detail and
-atmosphere rather than for the garment shot itself.
+That combination rules out the editorial apparel photography that dominates a
+search for any Pakistani garment — every good match is a portrait of a model. What
+survives is garment-only work: pieces on a hanger or a rail, flat lays, folded
+stacks and fabric close-ups. That is what the catalogue is built from, so the
+frames are chosen for consistent light and a neutral ground rather than for
+literal accuracy to a shalwar kameez silhouette, which stock does not have
+without a person wearing it.
+
+Candidates rejected on review are recorded in `public/products/CREDITS.md` so the
+next pass does not re-litigate them. Review new ids on a contact sheet before
+adding them — several images in the pool carry a brand label, a stray object or a
+colour cast that is invisible in the alt text and obvious at thumbnail size.
 
 ### Do not select textures by file size
 
